@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --font-display: "Fraunces", serif;
+  --font-sans: "Space Grotesk", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8f3ea;
+  color: #1c1917;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@keyframes videoFadeLoop {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.video-fade-loop {
+  animation: videoFadeLoop 2s ease-in-out infinite;
+}
