@@ -3,7 +3,13 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { InlineEditTarget } from "@/components/admin/inlineEditTypes";
-import { GlobalSettings, MediaAsset, PageContent, TextStyle } from "@/lib/content/types";
+import {
+  ContentBlock,
+  GlobalSettings,
+  MediaAsset,
+  PageContent,
+  TextStyle,
+} from "@/lib/content/types";
 import { createBrowserClient } from "@/lib/supabase/browser";
 
 const cardClass =
@@ -31,11 +37,13 @@ type Props = {
 const updateBlock = (
   content: PageContent,
   index: number,
-  patch: Record<string, unknown>
-) => ({
+  patch: Partial<ContentBlock["data"]>
+): PageContent => ({
   ...content,
   blocks: content.blocks.map((block, i) =>
-    i === index ? { ...block, data: { ...block.data, ...patch } } : block
+    i === index
+      ? ({ ...block, data: { ...block.data, ...patch } } as ContentBlock)
+      : block
   ),
 });
 
