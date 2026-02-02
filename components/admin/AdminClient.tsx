@@ -20,6 +20,9 @@ export default function AdminClient() {
   const [role, setRole] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isRecovery, setIsRecovery] = useState(false);
   const [content, setContent] = useState<PageContent>(defaultContent);
   const [globals, setGlobals] = useState<GlobalSettings>(defaultGlobals);
   const [loading, setLoading] = useState(true);
@@ -100,6 +103,14 @@ export default function AdminClient() {
     };
   }, [supabase]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (hash.includes("type=recovery")) {
+      setIsRecovery(true);
+    }
+  }, []);
+
   const handleSignIn = async () => {
     setStatus(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -115,6 +126,48 @@ export default function AdminClient() {
       setStatus(error.message);
     } else {
       setStatus("Account created. Ask an admin to upgrade your role.");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setStatus(null);
+    if (!email) {
+      setStatus("Enter your email to receive a reset link.");
+      return;
+    }
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/admin` : undefined;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    if (error) {
+      setStatus(error.message);
+    } else {
+      setStatus("Password reset email sent.");
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    setStatus(null);
+    if (!newPassword || newPassword.length < 6) {
+      setStatus("Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setStatus("Passwords do not match.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      setStatus(error.message);
+      return;
+    }
+    setStatus("Password updated. You can sign in now.");
+    setNewPassword("");
+    setConfirmPassword("");
+    setIsRecovery(false);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", window.location.pathname);
     }
   };
 
@@ -245,6 +298,55 @@ export default function AdminClient() {
   }
 
   if (!sessionEmail) {
+    if (isRecovery) {
+      return (
+        <div className="min-h-screen bg-stone-50 px-6 py-16">
+          <div className="mx-auto max-w-xl space-y-6 rounded-3xl border border-stone-200 bg-white p-8 shadow-lg">
+            <h1 className="text-2xl font-semibold text-stone-900">Reset password</h1>
+            <p className="text-sm text-stone-500">
+              Set a new password for your account.
+            </p>
+            <div className="space-y-4">
+              <input
+                className={formInput}
+                placeholder="New password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                type="password"
+              />
+              <input
+                className={formInput}
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                type="password"
+              />
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="rounded-full bg-stone-900 px-6 py-3 text-sm font-semibold text-white"
+                onClick={handleUpdatePassword}
+              >
+                Update password
+              </button>
+              <button
+                className="rounded-full border border-stone-200 px-6 py-3 text-sm font-semibold text-stone-900"
+                onClick={() => {
+                  setIsRecovery(false);
+                  if (typeof window !== "undefined") {
+                    window.history.replaceState(null, "", window.location.pathname);
+                  }
+                }}
+              >
+                Back to sign in
+              </button>
+            </div>
+            {status && <p className="text-sm text-amber-700">{status}</p>}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-stone-50 px-6 py-16">
         <div className="mx-auto max-w-xl space-y-6 rounded-3xl border border-stone-200 bg-white p-8 shadow-lg">
@@ -280,6 +382,12 @@ export default function AdminClient() {
               onClick={handleSignUp}
             >
               Create account
+            </button>
+            <button
+              className="rounded-full border border-stone-200 px-6 py-3 text-sm font-semibold text-stone-900"
+              onClick={handleResetPassword}
+            >
+              Reset password
             </button>
           </div>
           {status && <p className="text-sm text-amber-700">{status}</p>}
