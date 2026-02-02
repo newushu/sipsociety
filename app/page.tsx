@@ -2,6 +2,8 @@ import BlockRenderer from "@/components/blocks/BlockRenderer";
 import IntroOverlay from "@/components/IntroOverlay";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
 
+export const revalidate = 0;
+
 export default async function Home() {
   const content = await getPublishedContent();
   const globals = await getPublishedGlobals();
