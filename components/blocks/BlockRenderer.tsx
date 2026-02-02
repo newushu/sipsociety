@@ -40,11 +40,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
               <section
                 key={block.id}
                 id={sectionIds.hero}
-                className="relative overflow-hidden rounded-[48px] border border-stone-200 bg-stone-900 text-white shadow-2xl shadow-stone-900/30"
-                style={{
-                  borderColor: borderEnabled ? borderColor : "transparent",
-                  borderWidth: borderEnabled ? borderWidth : 0,
-                }}
+                className="relative left-1/2 right-1/2 w-screen -translate-x-1/2 overflow-hidden bg-stone-900 text-white shadow-2xl shadow-stone-900/30"
               >
                 <div className="absolute inset-0">
                   <video
@@ -65,7 +61,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     style={{ opacity: block.data.overlayOpacity }}
                   />
                 </div>
-                <div className="relative z-10 flex min-h-[120vh] flex-col items-center justify-center gap-6 px-8 py-20 text-center sm:min-h-[140vh] sm:px-16 lg:min-h-[160vh]">
+                <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center gap-6 px-6 py-20 text-center sm:min-h-[140vh] sm:px-16 lg:min-h-[160vh]">
                   <p
                     className="text-xs font-semibold uppercase tracking-[0.5em] text-amber-200/80"
                     style={styleFrom(globals?.logoTextStyle)}
