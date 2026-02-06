@@ -682,8 +682,12 @@ export default function AdminClient() {
         <div className="flex min-h-screen">
           {showSidebar ? (
             <aside
-              className="sticky top-0 z-30 hidden h-screen flex-col gap-4 overflow-y-auto border-r border-stone-200 bg-white px-5 py-8 shadow-sm lg:flex"
-              style={{ width: `${sidebarWidth}px` }}
+              className="sticky top-0 z-30 hidden h-screen flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-stone-200 bg-white px-5 py-8 shadow-sm lg:flex"
+              style={{
+                width: `${sidebarWidth}px`,
+                minWidth: `${sidebarWidth}px`,
+                maxWidth: `${sidebarWidth}px`,
+              }}
             >
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">

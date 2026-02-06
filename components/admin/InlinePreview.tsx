@@ -45,6 +45,7 @@ const EDIT_LABELS: Record<string, string> = {
   caption: "Edit caption",
   footerTagline: "Edit footer",
   footerLead: "Edit lead",
+  footerButton: "Edit button",
   brandAnimation: "Edit animation",
 };
 
@@ -122,6 +123,8 @@ const mapEditToTarget = (
       return { kind: "text", scope: "footerTagline", blockIndex };
     case "footerLead":
       return { kind: "text", scope: "footerLead", blockIndex };
+    case "footerButton":
+      return { kind: "text", scope: "footerButton", blockIndex };
     default:
       return null;
   }
@@ -385,6 +388,10 @@ export default function InlinePreview({
       }
       if (scope === "footerLead" && block?.type === "footer") {
         const style = ensureTextStyle(block.data.leadStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "footerButton" && block?.type === "footer") {
+        const style = ensureTextStyle(block.data.leadButtonStyle);
         return { x: style.x ?? 0, y: style.y ?? 0 };
       }
       return null;

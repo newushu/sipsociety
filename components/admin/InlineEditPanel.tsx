@@ -1693,6 +1693,14 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leadText: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leadStyle: next }));
+    } else if (target.scope === "footerButton" && block?.type === "footer") {
+      value = block.data.leadButtonText ?? "";
+      style = block.data.leadButtonStyle;
+      placeholder = "Join";
+      onValueChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leadButtonText: next }));
+      onStyleChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leadButtonStyle: next }));
     }
 
     const resolvedStyle = ensureTextStyle(style);
@@ -1798,75 +1806,78 @@ export default function InlineEditPanel({
             </p>
           </div>
         </div>
-        {fontPickerOpen && (
-          <div
-            ref={(node) => {
-              fontPanelRef.current = node;
-            }}
-            className="fixed z-[60] w-[320px] rounded-2xl border border-stone-200 bg-white p-3 shadow-2xl"
-            style={{ top: fontPickerPos.top, left: fontPickerPos.left }}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
-                Fonts
-              </p>
-              <button
-                type="button"
-                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
-                onClick={() => setFontPickerOpen(false)}
+        {fontPickerOpen && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={(node) => {
+                  fontPanelRef.current = node;
+                }}
+                className="fixed z-[60] w-[320px] rounded-2xl border border-stone-200 bg-white p-3 shadow-2xl"
+                style={{ top: fontPickerPos.top, left: fontPickerPos.left }}
               >
-                Close
-              </button>
-            </div>
-            <div className="max-h-72 overflow-y-auto pr-1">
-              {fontList.map((option) => {
-                const isSelected = option.value
-                  ? resolvedStyle.font === option.value
-                  : !resolvedStyle.font;
-                const previewFont = option.value
-                  ? fontFamilyForKey(option.value as TextStyle["font"])
-                  : fontFamilyForKey(globals.bodyFont ?? "sans");
-                return (
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                    Fonts
+                  </p>
                   <button
-                    key={option.value || "global"}
                     type="button"
-                    className={`mb-2 flex w-full items-center justify-between rounded-md border px-2 py-2 text-left ${
-                      isSelected
-                        ? "border-amber-300 bg-amber-50 text-stone-900"
-                        : "border-transparent text-stone-600 hover:border-stone-200 hover:bg-stone-50"
-                    }`}
-                    onMouseEnter={() =>
-                      setHoverFont(
-                        option.value ? (option.value as TextStyle["font"]) : null
-                      )
-                    }
-                    onMouseLeave={() => setHoverFont(null)}
-                    onClick={() => {
-                      onStyleChange({
-                        ...resolvedStyle,
-                        font: option.value ? (option.value as TextStyle["font"]) : undefined,
-                      });
-                      setFontPickerOpen(false);
-                    }}
+                    className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                    onClick={() => setFontPickerOpen(false)}
                   >
-                    <span className="mr-2 text-[9px] uppercase tracking-[0.2em] text-stone-400">
-                      {option.label}
-                    </span>
-                    <span
-                      className="text-sm text-stone-700"
-                      style={{ fontFamily: previewFont }}
-                    >
-                      {previewSnippet}
-                    </span>
+                    Close
                   </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-[10px] text-stone-400">
-              Hover to preview (select text first).
-            </p>
-          </div>
-        )}
+                </div>
+                <div className="max-h-72 overflow-y-auto pr-1">
+                  {fontList.map((option) => {
+                    const isSelected = option.value
+                      ? resolvedStyle.font === option.value
+                      : !resolvedStyle.font;
+                    const previewFont = option.value
+                      ? fontFamilyForKey(option.value as TextStyle["font"])
+                      : fontFamilyForKey(globals.bodyFont ?? "sans");
+                    return (
+                      <button
+                        key={option.value || "global"}
+                        type="button"
+                        className={`mb-2 flex w-full items-center justify-between rounded-md border px-2 py-2 text-left ${
+                          isSelected
+                            ? "border-amber-300 bg-amber-50 text-stone-900"
+                            : "border-transparent text-stone-600 hover:border-stone-200 hover:bg-stone-50"
+                        }`}
+                        onMouseEnter={() =>
+                          setHoverFont(
+                            option.value ? (option.value as TextStyle["font"]) : null
+                          )
+                        }
+                        onMouseLeave={() => setHoverFont(null)}
+                        onClick={() => {
+                          onStyleChange({
+                            ...resolvedStyle,
+                            font: option.value ? (option.value as TextStyle["font"]) : undefined,
+                          });
+                          setFontPickerOpen(false);
+                        }}
+                      >
+                        <span className="mr-2 text-[9px] uppercase tracking-[0.2em] text-stone-400">
+                          {option.label}
+                        </span>
+                        <span
+                          className="text-sm text-stone-700"
+                          style={{ fontFamily: previewFont }}
+                        >
+                          {previewSnippet}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[10px] text-stone-400">
+                  Hover to preview (select text first).
+                </p>
+              </div>,
+              document.body
+            )
+          : null}
         <div className="mt-3 space-y-2">
           <label className="flex items-center gap-2 text-[10px] text-stone-500">
             <input

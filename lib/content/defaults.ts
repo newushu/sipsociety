@@ -118,6 +118,7 @@ export const defaultContent: PageContent = {
         leadText: "Join our list for seasonal drops and cafe events.",
         leadStyle: { size: 16, weight: 600, italic: false, x: 0, y: 0 },
         leadPlaceholder: "Enter your email",
+        leadButtonText: "Join",
         showLeadLogo: true,
         links: [
           { label: "Instagram", href: "#" },

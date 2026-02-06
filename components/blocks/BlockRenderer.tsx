@@ -548,8 +548,13 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                       className="w-full max-w-sm rounded-full border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700 shadow-sm"
                       placeholder={block.data.leadPlaceholder ?? "Enter your email"}
                     />
-                    <button className="rounded-full border border-stone-200 bg-stone-900 px-5 py-2 text-sm font-semibold text-white">
-                      Join
+                    <button
+                      data-edit="footerButton"
+                      data-block-index={index}
+                      className="rounded-full border border-stone-200 bg-stone-900 px-5 py-2 text-sm font-semibold text-white"
+                      style={styleFrom(block.data.leadButtonStyle, globals?.bodyFont)}
+                    >
+                      {block.data.leadButtonText ?? "Join"}
                     </button>
                   </div>
                 </div>

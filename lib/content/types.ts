@@ -197,6 +197,8 @@ export type FooterBlock = {
     leadText?: string;
     leadStyle?: TextStyle;
     leadPlaceholder?: string;
+    leadButtonText?: string;
+    leadButtonStyle?: TextStyle;
     showLeadLogo?: boolean;
   };
 };

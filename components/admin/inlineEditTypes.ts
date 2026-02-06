@@ -26,7 +26,8 @@ export type InlineEditTarget =
         | "leftBody"
         | "caption"
         | "footerTagline"
-        | "footerLead";
+        | "footerLead"
+        | "footerButton";
       blockIndex?: number;
     }
   | {
