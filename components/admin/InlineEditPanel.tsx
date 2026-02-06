@@ -1,15 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { InlineEditTarget } from "@/components/admin/inlineEditTypes";
 import {
   ContentBlock,
+  FontKey,
   GlobalSettings,
   MediaAsset,
   PageContent,
   TextStyle,
 } from "@/lib/content/types";
+import { fontFamilyForKey, fontOptions, sortFontOptions } from "@/lib/content/fonts";
 import { createBrowserClient } from "@/lib/supabase/browser";
 
 const cardClass =
@@ -21,7 +24,7 @@ const inputClass =
   "mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700";
 
 const rangeClass =
-  "mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500";
+  "mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-amber-500 [&::-moz-range-thumb]:shadow";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -32,6 +35,13 @@ type Props = {
   onChangeContent: (content: PageContent) => void;
   onChangeGlobals: (globals: GlobalSettings) => void;
   onClear?: () => void;
+};
+
+type AssetItem = {
+  name: string;
+  url: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 const updateBlock = (
@@ -53,6 +63,7 @@ const ensureTextStyle = (style?: TextStyle): TextStyle => ({
   italic: style?.italic ?? false,
   x: style?.x ?? 0,
   y: style?.y ?? 0,
+  font: style?.font,
 });
 
 export default function InlineEditPanel({
@@ -66,9 +77,62 @@ export default function InlineEditPanel({
   const supabase = useMemo(() => createBrowserClient(), []);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [assets, setAssets] = useState<string[]>([]);
+  const [assets, setAssets] = useState<AssetItem[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [hoverFont, setHoverFont] = useState<TextStyle["font"] | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
+  const textInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
+  const [fontPickerPos, setFontPickerPos] = useState<{ top: number; left: number }>({
+    top: 120,
+    left: 320,
+  });
+  const fontButtonRef = useRef<HTMLButtonElement | null>(null);
+  const fontPanelRef = useRef<HTMLDivElement | null>(null);
+  const [libraryExpanded, setLibraryExpanded] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryFilter, setLibraryFilter] = useState<"all" | "15m" | "1h" | "1d" | "1w">(
+    "all"
+  );
+  const usedFonts = useMemo(() => {
+    const used = new Set<FontKey>();
+    if (globals.bodyFont) used.add(globals.bodyFont);
+    if (globals.mottoFont) used.add(globals.mottoFont);
+    if (globals.brandHeadingFont) used.add(globals.brandHeadingFont);
+    if (globals.brandMessageFont) used.add(globals.brandMessageFont);
+    if (globals.logoTextStyle?.font) used.add(globals.logoTextStyle.font);
+    if (globals.mottoStyle?.font) used.add(globals.mottoStyle.font);
+    if (globals.brandMessageStyle?.font) used.add(globals.brandMessageStyle.font);
+    content.blocks.forEach((block) => {
+      if (block.type === "hero" && block.data.taglineStyle?.font) {
+        used.add(block.data.taglineStyle.font);
+      }
+      if (block.type === "brand-message") {
+        if (block.data.headingStyle?.font) used.add(block.data.headingStyle.font);
+        if (block.data.messageStyle?.font) used.add(block.data.messageStyle.font);
+      }
+      if (block.type === "triple-media") {
+        if (block.data.leftTitleStyle?.font) used.add(block.data.leftTitleStyle.font);
+        if (block.data.leftBodyStyle?.font) used.add(block.data.leftBodyStyle.font);
+      }
+      if (block.type === "landscape" && block.data.captionStyle?.font) {
+        used.add(block.data.captionStyle.font);
+      }
+      if (block.type === "footer" && block.data.taglineStyle?.font) {
+        used.add(block.data.taglineStyle.font);
+      }
+    });
+    return used;
+  }, [content.blocks, globals]);
+  const [hoverPreview, setHoverPreview] = useState<{
+    url: string;
+    kind: "video" | "image";
+    label: string;
+    dateLabel: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const handleUpload = async (file: File, onUrl: (url: string) => void) => {
     setUploading(true);
@@ -91,7 +155,7 @@ export default function InlineEditPanel({
     setLoadingAssets(true);
     setAssetError(null);
     const { data, error } = await supabase.storage.from("media").list("", {
-      limit: 60,
+      limit: 200,
       sortBy: { column: "created_at", order: "desc" },
     });
     if (error) {
@@ -99,10 +163,14 @@ export default function InlineEditPanel({
       setLoadingAssets(false);
       return;
     }
-    const urls =
-      data?.map((item) => supabase.storage.from("media").getPublicUrl(item.name).data.publicUrl) ??
-      [];
-    setAssets(urls);
+    const items =
+      data?.map((item) => ({
+        name: item.name,
+        url: supabase.storage.from("media").getPublicUrl(item.name).data.publicUrl,
+        createdAt: item.created_at ?? null,
+        updatedAt: item.updated_at ?? null,
+      })) ?? [];
+    setAssets(items);
     setLoadingAssets(false);
   };
 
@@ -113,15 +181,330 @@ export default function InlineEditPanel({
   }, [target]);
 
   useEffect(() => {
+    setHoverFont(null);
+    setHasSelection(false);
+    setFontPickerOpen(false);
+  }, [target?.kind, target?.scope, target?.blockIndex]);
+
+  useEffect(() => {
+    if (!fontPickerOpen) return;
+    const handle = (event: MouseEvent) => {
+      const targetNode = event.target as Node | null;
+      if (!targetNode) return;
+      if (fontPanelRef.current?.contains(targetNode)) return;
+      if (fontButtonRef.current?.contains(targetNode)) return;
+      setFontPickerOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFontPickerOpen(false);
+    };
+    window.addEventListener("mousedown", handle);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handle);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [fontPickerOpen]);
+
+  useEffect(() => {
     if (target?.kind === "media") {
       loadAssets();
     }
   }, [target]);
 
   const isVideoUrl = (url: string) => /\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/i.test(url);
+  const formatAssetDate = (asset: AssetItem) => {
+    const stamp = asset.updatedAt ?? asset.createdAt;
+    if (!stamp) return "Upload date unknown";
+    const date = new Date(stamp);
+    if (Number.isNaN(date.getTime())) return "Upload date unknown";
+    // eslint-disable-next-line react-hooks/purity
+    const minutesSince = Math.floor((Date.now() - date.getTime()) / 60000);
+    if (minutesSince >= 0 && minutesSince <= 2) {
+      return "Just uploaded";
+    }
+    if (minutesSince < 60) {
+      return `Uploaded ${minutesSince} minutes ago`;
+    }
+    const hoursSince = Math.floor(minutesSince / 60);
+    if (hoursSince < 24) {
+      return `Uploaded ${hoursSince} hours ago`;
+    }
+    return `Uploaded ${date.toLocaleString()}`;
+  };
+
+  const handlePreviewEnter = (
+    event: React.MouseEvent,
+    asset: AssetItem,
+    kind: "video" | "image"
+  ) => {
+    const dateLabel = formatAssetDate(asset);
+    setHoverPreview({
+      url: asset.url,
+      kind,
+      label: "Preview",
+      dateLabel,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const handlePreviewMove = (event: React.MouseEvent) => {
+    setHoverPreview((prev) =>
+      prev
+        ? {
+            ...prev,
+            x: event.clientX,
+            y: event.clientY,
+          }
+        : prev
+    );
+  };
+
+  const handlePreviewLeave = () => setHoverPreview(null);
+
+  const previewTooltip = hoverPreview ? (
+    <div
+      className="pointer-events-none fixed z-[9999] w-56 rounded-xl border border-stone-200 bg-white p-2 text-left shadow-2xl"
+      style={{
+        left:
+          typeof window === "undefined"
+            ? hoverPreview.x
+            : Math.min(hoverPreview.x + 16, window.innerWidth - 240),
+        top:
+          typeof window === "undefined"
+            ? hoverPreview.y
+            : Math.min(hoverPreview.y + 16, window.innerHeight - 160),
+      }}
+    >
+      {hoverPreview.kind === "video" ? (
+        <video
+          className="h-28 w-full rounded-lg object-cover"
+          src={hoverPreview.url}
+          muted
+          playsInline
+          autoPlay
+          loop
+        />
+      ) : (
+        <img
+          className="h-28 w-full rounded-lg object-cover"
+          src={hoverPreview.url}
+          alt=""
+        />
+      )}
+      <p className="mt-2 text-[10px] uppercase tracking-[0.2em] text-stone-500">
+        {hoverPreview.label}
+      </p>
+      <p className="mt-1 text-[10px] text-stone-500">{hoverPreview.dateLabel}</p>
+    </div>
+  ) : null;
+
+  const isAssetInRange = (asset: AssetItem, filter: typeof libraryFilter) => {
+    if (filter === "all") return true;
+    const stamp = asset.updatedAt ?? asset.createdAt;
+    if (!stamp) return false;
+    const date = new Date(stamp);
+    if (Number.isNaN(date.getTime())) return false;
+    // eslint-disable-next-line react-hooks/purity
+    const minutes = (Date.now() - date.getTime()) / 60000;
+    if (minutes < 0) return false;
+    if (filter === "15m") return minutes <= 15;
+    if (filter === "1h") return minutes <= 60;
+    if (filter === "1d") return minutes <= 60 * 24;
+    if (filter === "1w") return minutes <= 60 * 24 * 7;
+    return true;
+  };
+
+  const filteredAssets = assets.filter((asset) => {
+    const query = librarySearch.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      asset.name.toLowerCase().includes(query) ||
+      asset.url.toLowerCase().includes(query);
+    return matchesSearch && isAssetInRange(asset, libraryFilter);
+  });
+  const scopedAssets = filteredAssets;
+  const currentMediaUrl =
+    target?.kind === "media"
+      ? (() => {
+          const block = target.blockIndex !== undefined ? content.blocks[target.blockIndex] : null;
+          if (!block) return "";
+          if (target.scope === "heroVideo" && block.type === "hero") return block.data.videoUrl ?? "";
+          if (target.scope === "middleMedia" && block.type === "triple-media") {
+            return block.data.middleMedia.url ?? "";
+          }
+          if (target.scope === "rightMedia" && block.type === "triple-media") {
+            return block.data.rightMedia.url ?? "";
+          }
+          if (target.scope === "landscapeMedia" && block.type === "landscape") {
+            return block.data.media.url ?? "";
+          }
+          if (target.scope === "brandTopImage" && block.type === "brand-message") {
+            return block.data.topImageUrl ?? "";
+          }
+          if (target.scope === "brandBgVideo" && block.type === "brand-message") {
+            return block.data.bgVideoUrl ?? "";
+          }
+          return "";
+        })()
+      : "";
+
+  const libraryModal =
+    libraryExpanded && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 px-6"
+            onClick={() => setLibraryExpanded(false)}
+          >
+            <div
+              className="w-full max-w-3xl rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+                  Media library
+                </p>
+                <button
+                  className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold"
+                  onClick={() => setLibraryExpanded(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                <input
+                  className={inputClass}
+                  placeholder="Search media..."
+                  value={librarySearch}
+                  onChange={(event) => setLibrarySearch(event.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["all", "All"],
+                    ["15m", "Last 15m"],
+                    ["1h", "Last hour"],
+                    ["1d", "Last day"],
+                    ["1w", "Last week"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                        libraryFilter === value
+                          ? "border-amber-300 bg-amber-200 text-stone-900"
+                          : "border-stone-200 text-stone-500"
+                      }`}
+                      onClick={() =>
+                        setLibraryFilter(value as typeof libraryFilter)
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 max-h-[60vh] overflow-y-auto">
+                <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+                  {scopedAssets.map((asset) => {
+                    const isVideo = isVideoUrl(asset.url);
+                    const isActive = currentMediaUrl === asset.url;
+                    return (
+                      <button
+                        key={asset.url}
+                        className={`group relative rounded-xl border bg-white p-2 text-left ${
+                          isActive ? "border-amber-400 ring-2 ring-amber-200" : "border-stone-200"
+                        }`}
+                        onClick={() => {
+                          if (!target || target.kind !== "media") return;
+                          const block = content.blocks[target.blockIndex];
+                          if (!block) return;
+                          if (target.scope === "heroVideo" && block.type === "hero") {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, { videoUrl: asset.url })
+                            );
+                          } else if (
+                            target.scope === "middleMedia" &&
+                            block.type === "triple-media"
+                          ) {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, {
+                                middleMedia: { ...block.data.middleMedia, url: asset.url },
+                              })
+                            );
+                          } else if (
+                            target.scope === "rightMedia" &&
+                            block.type === "triple-media"
+                          ) {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, {
+                                rightMedia: { ...block.data.rightMedia, url: asset.url },
+                              })
+                            );
+                          } else if (
+                            target.scope === "landscapeMedia" &&
+                            block.type === "landscape"
+                          ) {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, {
+                                media: { ...block.data.media, url: asset.url },
+                              })
+                            );
+                          } else if (
+                            target.scope === "brandTopImage" &&
+                            block.type === "brand-message"
+                          ) {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, {
+                                topImageUrl: asset.url,
+                              })
+                            );
+                          } else if (
+                            target.scope === "brandBgVideo" &&
+                            block.type === "brand-message"
+                          ) {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, {
+                                bgVideoUrl: asset.url,
+                              })
+                            );
+                          }
+                          setLibraryExpanded(false);
+                        }}
+                      >
+                        {isActive ? (
+                          <span className="absolute right-2 top-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-900">
+                            Current
+                          </span>
+                        ) : null}
+                        <div className="h-20 w-full overflow-hidden rounded-lg">
+                          {isVideo ? (
+                            <video className="h-full w-full object-cover" src={asset.url} muted />
+                          ) : (
+                            <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                          )}
+                        </div>
+                        <p className="mt-2 text-[10px] text-stone-500">
+                          {formatAssetDate(asset)}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
+  const withModal = (node: ReactNode) => (
+    <>
+      {libraryModal}
+      {node}
+    </>
+  );
 
   if (!target) {
-    return (
+    return withModal(
       <div className={cardClass}>
         <p className={labelClass}>Inline editor</p>
         <p className="mt-2 text-[11px] text-stone-500">
@@ -131,11 +514,102 @@ export default function InlineEditPanel({
     );
   }
 
+  if (target.kind === "animation") {
+    const block = content.blocks[target.blockIndex];
+    if (!block || block.type !== "brand-message") {
+      return null;
+    }
+    return withModal(
+      <div className={cardClass}>
+        <div className="flex items-center justify-between">
+          <p className={labelClass}>Brand animation</p>
+        </div>
+        <label className="mt-3 text-[10px] text-stone-500">
+          Style
+          <select
+            className={inputClass}
+            value={block.data.animationType ?? "none"}
+            onChange={(event) =>
+              onChangeContent(
+                updateBlock(content, target.blockIndex, {
+                  animationType: event.target.value as "none" | "reveal" | "roll",
+                })
+              )
+            }
+          >
+            {["none", "reveal", "roll"].map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-3 text-[10px] text-stone-500">
+          Trigger
+          <select
+            className={inputClass}
+            value={block.data.animationTrigger ?? "once"}
+            onChange={(event) =>
+              onChangeContent(
+                updateBlock(content, target.blockIndex, {
+                  animationTrigger: event.target.value as "once" | "always",
+                })
+              )
+            }
+          >
+            {["once", "always"].map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+          onClick={() =>
+            onChangeContent(
+              updateBlock(content, target.blockIndex, {
+                animationPlayId: (block.data.animationPlayId ?? 0) + 1,
+              })
+            )
+          }
+        >
+          Play animation
+        </button>
+      </div>
+    );
+  }
+
   if (target.kind === "logo") {
     const block = content.blocks[target.blockIndex];
     if (!block) {
       return null;
     }
+
+    const renderLinkControls = (
+      enabled: boolean,
+      url: string,
+      onToggle: (next: boolean) => void,
+      onUrl: (next: string) => void
+    ) => (
+      <div className="mt-4 space-y-2">
+        <label className="flex items-center gap-2 text-[10px] text-stone-500">
+          <input type="checkbox" checked={enabled} onChange={(e) => onToggle(e.target.checked)} />
+          Enable link
+        </label>
+        {enabled ? (
+          <label className="text-[10px] text-stone-500">
+            Link URL
+            <input
+              className={inputClass}
+              value={url}
+              onChange={(e) => onUrl(e.target.value)}
+              placeholder="https://..."
+            />
+          </label>
+        ) : null}
+      </div>
+    );
 
     const baseCard = (children: ReactNode) => (
       <div className={cardClass}>
@@ -150,6 +624,16 @@ export default function InlineEditPanel({
             </button>
           ) : null}
         </div>
+        <label className="mt-3 flex items-center gap-2 text-[10px] text-stone-500">
+          <input
+            type="checkbox"
+            checked={globals.showLogoBox ?? true}
+            onChange={(event) =>
+              onChangeGlobals({ ...globals, showLogoBox: event.target.checked })
+            }
+          />
+          Show logo ring
+        </label>
         {children}
       </div>
     );
@@ -160,15 +644,16 @@ export default function InlineEditPanel({
       const x = block.data.leftLogoX ?? 0;
       const y = block.data.leftLogoY ?? 0;
 
-      return baseCard(
-        <div className="mt-3 space-y-3">
+      return withModal(
+        baseCard(
+          <div className="mt-3 space-y-3">
           <label className="text-[10px] text-stone-500">
             Logo size ({scale.toFixed(2)})
             <input
               className={rangeClass}
               type="range"
               min={0.3}
-              max={3}
+              max={8}
               step={0.02}
               value={scale}
               onChange={(event) =>
@@ -186,7 +671,7 @@ export default function InlineEditPanel({
               className={rangeClass}
               type="range"
               min={0.3}
-              max={3}
+              max={8}
               step={0.02}
               value={boxScale}
               onChange={(event) =>
@@ -201,11 +686,11 @@ export default function InlineEditPanel({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-[10px] text-stone-500">
               X ({x.toFixed(0)}%)
-              <input
-                className={rangeClass}
-                type="range"
-                min={-50}
-                max={50}
+            <input
+              className={rangeClass}
+              type="range"
+              min={-100}
+              max={100}
                 step={1}
                 value={x}
                 onChange={(event) =>
@@ -219,11 +704,11 @@ export default function InlineEditPanel({
             </label>
             <label className="text-[10px] text-stone-500">
               Y ({y.toFixed(0)}%)
-              <input
-                className={rangeClass}
-                type="range"
-                min={-50}
-                max={50}
+            <input
+              className={rangeClass}
+              type="range"
+              min={-100}
+              max={100}
                 step={1}
                 value={y}
                 onChange={(event) =>
@@ -249,7 +734,24 @@ export default function InlineEditPanel({
           >
             Center logo
           </button>
+          {renderLinkControls(
+            block.data.leftLogoLinkEnabled ?? false,
+            block.data.leftLogoLinkUrl ?? "",
+            (next) =>
+              onChangeContent(
+                updateBlock(content, target.blockIndex, {
+                  leftLogoLinkEnabled: next,
+                })
+              ),
+            (next) =>
+              onChangeContent(
+                updateBlock(content, target.blockIndex, {
+                  leftLogoLinkUrl: next,
+                })
+              )
+          )}
         </div>
+        )
       );
     }
 
@@ -262,15 +764,16 @@ export default function InlineEditPanel({
       const x = block.data.logoX ?? 0;
       const y = block.data.logoY ?? 0;
 
-      return baseCard(
-        <div className="mt-3 space-y-3">
+      return withModal(
+        baseCard(
+          <div className="mt-3 space-y-3">
           <label className="text-[10px] text-stone-500">
             Logo size ({scale.toFixed(2)})
             <input
               className={rangeClass}
               type="range"
               min={0.3}
-              max={3}
+              max={8}
               step={0.02}
               value={scale}
               onChange={(event) =>
@@ -288,7 +791,7 @@ export default function InlineEditPanel({
               className={rangeClass}
               type="range"
               min={0.3}
-              max={3}
+              max={8}
               step={0.02}
               value={boxScale}
               onChange={(event) =>
@@ -303,11 +806,11 @@ export default function InlineEditPanel({
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-[10px] text-stone-500">
               X ({x.toFixed(0)}%)
-              <input
-                className={rangeClass}
-                type="range"
-                min={-50}
-                max={50}
+            <input
+              className={rangeClass}
+              type="range"
+              min={-100}
+              max={100}
                 step={1}
                 value={x}
                 onChange={(event) =>
@@ -321,11 +824,11 @@ export default function InlineEditPanel({
             </label>
             <label className="text-[10px] text-stone-500">
               Y ({y.toFixed(0)}%)
-              <input
-                className={rangeClass}
-                type="range"
-                min={-50}
-                max={50}
+            <input
+              className={rangeClass}
+              type="range"
+              min={-100}
+              max={100}
                 step={1}
                 value={y}
                 onChange={(event) =>
@@ -351,7 +854,24 @@ export default function InlineEditPanel({
           >
             Center logo
           </button>
+          {renderLinkControls(
+            block.data.logoLinkEnabled ?? false,
+            block.data.logoLinkUrl ?? "",
+            (next) =>
+              onChangeContent(
+                updateBlock(content, target.blockIndex, {
+                  logoLinkEnabled: next,
+                })
+              ),
+            (next) =>
+              onChangeContent(
+                updateBlock(content, target.blockIndex, {
+                  logoLinkUrl: next,
+                })
+              )
+          )}
         </div>
+        )
       );
     }
 
@@ -369,8 +889,9 @@ export default function InlineEditPanel({
       const videoY = block.data.videoY ?? 50;
       const videoScale = block.data.videoScale ?? 1;
       const desaturate = block.data.videoDesaturate ?? 0.6;
-      return (
-        <div className={cardClass}>
+      return withModal(
+        <>
+          <div className={cardClass}>
           <div className="flex items-center justify-between">
             <p className={labelClass}>Hero video</p>
             {onClear ? (
@@ -431,20 +952,36 @@ export default function InlineEditPanel({
             ) : assetError ? (
               <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
             ) : (
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {assets.filter(isVideoUrl).map((url) => (
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+                <div className="grid grid-cols-4 gap-2">
+                {assets.filter((asset) => isVideoUrl(asset.url)).map((asset) => (
                   <button
-                    key={url}
-                    className="h-16 w-full overflow-hidden rounded-lg border border-stone-200"
+                    key={asset.url}
+                    className="group relative h-16 w-full rounded-lg border border-stone-200 bg-white"
                     onClick={() =>
-                      onChangeContent(updateBlock(content, target.blockIndex, { videoUrl: url }))
+                      onChangeContent(
+                        updateBlock(content, target.blockIndex, { videoUrl: asset.url })
+                      )
                     }
+                    onMouseEnter={(event) => handlePreviewEnter(event, asset, "video")}
+                    onMouseMove={handlePreviewMove}
+                    onMouseLeave={handlePreviewLeave}
                   >
-                    <video className="h-full w-full object-cover" src={url} muted />
+                    <div className="h-full w-full overflow-hidden rounded-lg">
+                      <video className="h-full w-full object-cover" src={asset.url} muted />
+                    </div>
                   </button>
                 ))}
+                </div>
               </div>
             )}
+            <button
+              className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+              onClick={() => setLibraryExpanded(true)}
+              type="button"
+            >
+              View library
+            </button>
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="text-[10px] text-stone-500">
@@ -488,7 +1025,7 @@ export default function InlineEditPanel({
               className={rangeClass}
               type="range"
               min={0.6}
-              max={1.6}
+              max={8}
               step={0.02}
               value={videoScale}
               onChange={(event) =>
@@ -518,7 +1055,42 @@ export default function InlineEditPanel({
               }
             />
           </label>
-        </div>
+          <div className="mt-3 space-y-2">
+            <label className="flex items-center gap-2 text-[10px] text-stone-500">
+              <input
+                type="checkbox"
+                checked={block.data.videoLinkEnabled ?? false}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, {
+                      videoLinkEnabled: event.target.checked,
+                    })
+                  )
+                }
+              />
+              Enable link
+            </label>
+            {block.data.videoLinkEnabled ? (
+              <label className="text-[10px] text-stone-500">
+                Link URL
+                <input
+                  className={inputClass}
+                  value={block.data.videoLinkUrl ?? ""}
+                  onChange={(event) =>
+                    onChangeContent(
+                      updateBlock(content, target.blockIndex, {
+                        videoLinkUrl: event.target.value,
+                      })
+                    )
+                  }
+                  placeholder="https://..."
+                />
+              </label>
+            ) : null}
+          </div>
+          </div>
+          {previewTooltip}
+        </>
       );
     }
 
@@ -529,7 +1101,29 @@ export default function InlineEditPanel({
           ? block.data.rightMedia
           : target.scope === "landscapeMedia" && block.type === "landscape"
             ? block.data.media
-            : null;
+            : target.scope === "brandTopImage" && block.type === "brand-message"
+              ? {
+                  url: block.data.topImageUrl ?? "",
+                  alt: block.data.topImageAlt ?? "",
+                  type: "image",
+                  x: 50,
+                  y: 50,
+                  scale: 1,
+                  linkEnabled: block.data.topImageLinkEnabled,
+                  linkUrl: block.data.topImageLinkUrl,
+                }
+              : target.scope === "brandBgVideo" && block.type === "brand-message"
+                ? {
+                    url: block.data.bgVideoUrl ?? "",
+                    alt: "Background video",
+                    type: "video",
+                    x: block.data.bgVideoX ?? 50,
+                    y: block.data.bgVideoY ?? 50,
+                    scale: block.data.bgVideoScale ?? 1,
+                    linkEnabled: false,
+                    linkUrl: "",
+                  }
+                : null;
 
     if (!media) {
       return null;
@@ -542,18 +1136,41 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex, { rightMedia: next }));
       } else if (target.scope === "landscapeMedia" && block.type === "landscape") {
         onChangeContent(updateBlock(content, target.blockIndex, { media: next }));
+      } else if (target.scope === "brandTopImage" && block.type === "brand-message") {
+        onChangeContent(
+          updateBlock(content, target.blockIndex, {
+            topImageUrl: next.url,
+            topImageAlt: next.alt,
+            topImageLinkEnabled: next.linkEnabled,
+            topImageLinkUrl: next.linkUrl,
+          })
+        );
+      } else if (target.scope === "brandBgVideo" && block.type === "brand-message") {
+        onChangeContent(
+          updateBlock(content, target.blockIndex, {
+            bgVideoUrl: next.url,
+            bgVideoX: next.x,
+            bgVideoY: next.y,
+            bgVideoScale: next.scale,
+          })
+        );
       }
     };
 
-    return (
-      <div className={cardClass}>
+    return withModal(
+      <>
+        <div className={cardClass}>
         <div className="flex items-center justify-between">
           <p className={labelClass}>
             {target.scope === "middleMedia"
               ? "Media photo"
               : target.scope === "rightMedia"
                 ? "Media video"
-                : "Landscape image"}
+                : target.scope === "landscapeMedia"
+                  ? "Landscape image"
+                  : target.scope === "brandTopImage"
+                    ? "Brand image"
+                    : "Brand background video"}
           </p>
           {onClear ? (
             <button className="text-[10px] uppercase tracking-[0.2em] text-stone-400" onClick={onClear}>
@@ -600,46 +1217,110 @@ export default function InlineEditPanel({
               Refresh
             </button>
           </div>
-          {loadingAssets ? (
-            <p className="mt-2 text-[10px] text-stone-400">Loading...</p>
-          ) : assetError ? (
-            <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
-          ) : (
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {assets
-                .filter((url) => (media.type === "video" ? isVideoUrl(url) : !isVideoUrl(url)))
-                .map((url) => (
-                  <button
-                    key={url}
-                    className="h-16 w-full overflow-hidden rounded-lg border border-stone-200"
-                    onClick={() => updateMedia({ ...media, url })}
-                  >
-                    {media.type === "video" ? (
-                      <video className="h-full w-full object-cover" src={url} muted />
-                    ) : (
-                      <img className="h-full w-full object-cover" src={url} alt="" />
-                    )}
-                  </button>
-                ))}
+          <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+            <input
+              className={inputClass}
+              placeholder="Search media..."
+              value={librarySearch}
+              onChange={(event) => setLibrarySearch(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["all", "All"],
+                ["15m", "15m"],
+                ["1h", "1h"],
+                ["1d", "1d"],
+                ["1w", "1w"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                    libraryFilter === value
+                      ? "border-amber-300 bg-amber-200 text-stone-900"
+                      : "border-stone-200 text-stone-500"
+                  }`}
+                  onClick={() => setLibraryFilter(value as typeof libraryFilter)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
-        <label className="mt-3 text-[10px] text-stone-500">
-          Alt text
-          <input
-            className={inputClass}
-            value={media.alt}
-            onChange={(event) => updateMedia({ ...media, alt: event.target.value })}
-          />
-        </label>
+          </div>
+            {loadingAssets ? (
+              <p className="mt-2 text-[10px] text-stone-400">Loading...</p>
+            ) : assetError ? (
+              <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
+            ) : (
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+                <div className="grid grid-cols-4 gap-2">
+                {(target.scope === "brandBgVideo"
+                  ? scopedAssets
+                  : scopedAssets.filter((asset) =>
+                      media.type === "video" ? isVideoUrl(asset.url) : !isVideoUrl(asset.url)
+                    )
+                ).map((asset) => {
+                  const isActive = currentMediaUrl === asset.url;
+                  return (
+                    <button
+                      key={asset.url}
+                      className={`group relative h-16 w-full rounded-lg border bg-white ${
+                        isActive ? "border-amber-400 ring-2 ring-amber-200" : "border-stone-200"
+                      }`}
+                      onClick={() => updateMedia({ ...media, url: asset.url })}
+                      onMouseEnter={(event) =>
+                        handlePreviewEnter(
+                          event,
+                          asset,
+                          isVideoUrl(asset.url) ? "video" : "image"
+                        )
+                      }
+                      onMouseMove={handlePreviewMove}
+                      onMouseLeave={handlePreviewLeave}
+                    >
+                      {isActive ? (
+                        <span className="absolute right-1 top-1 rounded-full bg-amber-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-amber-900">
+                          Current
+                        </span>
+                      ) : null}
+                      <div className="h-full w-full overflow-hidden rounded-lg">
+                        {isVideoUrl(asset.url) ? (
+                          <video className="h-full w-full object-cover" src={asset.url} muted />
+                        ) : (
+                          <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+            onClick={() => setLibraryExpanded(true)}
+            type="button"
+          >
+            View library
+          </button>
+        {target.scope !== "brandBgVideo" ? (
+          <label className="mt-3 text-[10px] text-stone-500">
+            Alt text
+            <input
+              className={inputClass}
+              value={media.alt}
+              onChange={(event) => updateMedia({ ...media, alt: event.target.value })}
+            />
+          </label>
+        ) : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-[10px] text-stone-500">
             X ({media.x}%)
             <input
               className={rangeClass}
               type="range"
-              min={0}
-              max={100}
+              min={-50}
+              max={150}
               value={media.x}
               onChange={(event) => updateMedia({ ...media, x: Number(event.target.value) })}
             />
@@ -649,8 +1330,8 @@ export default function InlineEditPanel({
             <input
               className={rangeClass}
               type="range"
-              min={0}
-              max={100}
+              min={-50}
+              max={150}
               value={media.y}
               onChange={(event) => updateMedia({ ...media, y: Number(event.target.value) })}
             />
@@ -662,13 +1343,112 @@ export default function InlineEditPanel({
             className={rangeClass}
             type="range"
             min={0.6}
-            max={1.6}
+            max={8}
             step={0.02}
             value={media.scale}
             onChange={(event) => updateMedia({ ...media, scale: Number(event.target.value) })}
           />
         </label>
-      </div>
+        {target.scope === "brandBgVideo" && block.type === "brand-message" ? (
+          <div className="mt-3 space-y-3">
+            <label className="flex items-center gap-2 text-[10px] text-stone-500">
+              <input
+                type="checkbox"
+                checked={block.data.showBgVideo ?? false}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, {
+                      showBgVideo: event.target.checked,
+                    })
+                  )
+                }
+              />
+              Show background video
+            </label>
+            <label className="text-[10px] text-stone-500">
+              Opacity ({(block.data.bgVideoOpacity ?? 0.4).toFixed(2)})
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={1}
+                step={0.02}
+                value={block.data.bgVideoOpacity ?? 0.4}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, {
+                      bgVideoOpacity: Number(event.target.value),
+                    })
+                  )
+                }
+              />
+            </label>
+            <label className="text-[10px] text-stone-500">
+              Feather ({(block.data.bgVideoFeather ?? 0.12).toFixed(2)})
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={0.4}
+                step={0.01}
+                value={block.data.bgVideoFeather ?? 0.12}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, {
+                      bgVideoFeather: Number(event.target.value),
+                    })
+                  )
+                }
+              />
+            </label>
+            <label className="text-[10px] text-stone-500">
+              Desaturate ({(block.data.bgVideoDesaturate ?? 0.4).toFixed(2)})
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={block.data.bgVideoDesaturate ?? 0.4}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, {
+                      bgVideoDesaturate: Number(event.target.value),
+                    })
+                  )
+                }
+              />
+            </label>
+          </div>
+        ) : null}
+        {target.scope !== "brandBgVideo" ? (
+          <div className="mt-3 space-y-2">
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
+            <input
+              type="checkbox"
+              checked={media.linkEnabled ?? false}
+              onChange={(event) =>
+                updateMedia({ ...media, linkEnabled: event.target.checked })
+              }
+            />
+            Enable link
+          </label>
+          {media.linkEnabled ? (
+            <label className="text-[10px] text-stone-500">
+              Link URL
+              <input
+                className={inputClass}
+                value={media.linkUrl ?? ""}
+                onChange={(event) => updateMedia({ ...media, linkUrl: event.target.value })}
+                placeholder="https://..."
+              />
+            </label>
+          ) : null}
+        </div>
+        ) : null}
+        </div>
+        {previewTooltip}
+      </>
     );
   }
 
@@ -689,21 +1469,128 @@ export default function InlineEditPanel({
                   ? "Left body"
                   : target.scope === "caption"
                     ? "Caption"
-                    : "Footer text";
+                    : target.scope === "footerLead"
+                      ? "Footer lead"
+                      : "Footer text";
 
     const multiline =
       target.scope === "brandMessage" || target.scope === "leftBody" || target.scope === "caption";
 
+    const visibilityControl = (() => {
+      if (target.scope === "logoText") {
+        const visible = globals.showLogoText ?? true;
+        return (
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={(event) =>
+                onChangeGlobals({ ...globals, showLogoText: event.target.checked })
+              }
+            />
+            Show logo text
+          </label>
+        );
+      }
+      if (target.scope === "tagline" && block?.type === "hero") {
+        const visible = block.data.showTagline ?? true;
+        return (
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex!, {
+                    showTagline: event.target.checked,
+                  })
+                )
+              }
+            />
+            Show hero text
+          </label>
+        );
+      }
+      if (target.scope === "brandHeading" && block?.type === "brand-message") {
+        const visible = block.data.showHeading ?? true;
+        return (
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex!, {
+                    showHeading: event.target.checked,
+                  })
+                )
+              }
+            />
+            Show heading
+          </label>
+        );
+      }
+      if (target.scope === "brandMessage" && block?.type === "brand-message") {
+        const visible = block.data.showMessage ?? true;
+        return (
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex!, {
+                    showMessage: event.target.checked,
+                  })
+                )
+              }
+            />
+            Show message
+          </label>
+        );
+      }
+      if (target.scope === "footerTagline" && block?.type === "footer") {
+        const visible = block.data.showTagline ?? true;
+        return (
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
+            <input
+              type="checkbox"
+              checked={visible}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex!, {
+                    showTagline: event.target.checked,
+                  })
+                )
+              }
+            />
+            Show footer text
+          </label>
+        );
+      }
+      return null;
+    })();
+
     let value = "";
     let style: TextStyle | undefined;
+    let placeholder = "";
     let onValueChange: (next: string) => void = () => {};
     let onStyleChange: (next: TextStyle) => void = () => {};
+    let linkEnabled = false;
+    let linkUrl = "";
+    let onLinkEnabledChange: (next: boolean) => void = () => {};
+    let onLinkUrlChange: (next: string) => void = () => {};
 
     if (target.scope === "logoText") {
       value = globals.logoText;
       style = globals.logoTextStyle;
       onValueChange = (next) => onChangeGlobals({ ...globals, logoText: next });
       onStyleChange = (next) => onChangeGlobals({ ...globals, logoTextStyle: next });
+      linkEnabled = globals.logoTextLinkEnabled ?? false;
+      linkUrl = globals.logoTextLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeGlobals({ ...globals, logoTextLinkEnabled: next });
+      onLinkUrlChange = (next) => onChangeGlobals({ ...globals, logoTextLinkUrl: next });
     } else if (target.scope === "tagline" && block?.type === "hero") {
       value = block.data.tagline;
       style = block.data.taglineStyle;
@@ -711,6 +1598,14 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { tagline: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { taglineStyle: next }));
+      linkEnabled = block.data.taglineLinkEnabled ?? false;
+      linkUrl = block.data.taglineLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, { taglineLinkEnabled: next })
+        );
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { taglineLinkUrl: next }));
     } else if (target.scope === "brandHeading" && block?.type === "brand-message") {
       value = block.data.heading;
       style = block.data.headingStyle;
@@ -718,6 +1613,12 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { heading: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { headingStyle: next }));
+      linkEnabled = block.data.headingLinkEnabled ?? false;
+      linkUrl = block.data.headingLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { headingLinkEnabled: next }));
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { headingLinkUrl: next }));
     } else if (target.scope === "brandMessage" && block?.type === "brand-message") {
       value = globals.brandMessage ?? block.data.message;
       style = globals.brandMessageStyle ?? block.data.messageStyle;
@@ -726,6 +1627,12 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { message: next }));
       };
       onStyleChange = (next) => onChangeGlobals({ ...globals, brandMessageStyle: next });
+      linkEnabled = block.data.messageLinkEnabled ?? false;
+      linkUrl = block.data.messageLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { messageLinkEnabled: next }));
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { messageLinkUrl: next }));
     } else if (target.scope === "leftTitle" && block?.type === "triple-media") {
       value = block.data.leftTitle;
       style = block.data.leftTitleStyle;
@@ -733,6 +1640,12 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leftTitle: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leftTitleStyle: next }));
+      linkEnabled = block.data.leftTitleLinkEnabled ?? false;
+      linkUrl = block.data.leftTitleLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leftTitleLinkEnabled: next }));
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leftTitleLinkUrl: next }));
     } else if (target.scope === "leftBody" && block?.type === "triple-media") {
       value = block.data.leftBody;
       style = block.data.leftBodyStyle;
@@ -740,6 +1653,12 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leftBody: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leftBodyStyle: next }));
+      linkEnabled = block.data.leftBodyLinkEnabled ?? false;
+      linkUrl = block.data.leftBodyLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leftBodyLinkEnabled: next }));
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leftBodyLinkUrl: next }));
     } else if (target.scope === "caption" && block?.type === "landscape") {
       value = block.data.caption;
       style = block.data.captionStyle;
@@ -747,6 +1666,12 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { caption: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { captionStyle: next }));
+      linkEnabled = block.data.captionLinkEnabled ?? false;
+      linkUrl = block.data.captionLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { captionLinkEnabled: next }));
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { captionLinkUrl: next }));
     } else if (target.scope === "footerTagline" && block?.type === "footer") {
       value = block.data.tagline;
       style = block.data.taglineStyle;
@@ -754,11 +1679,36 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { tagline: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { taglineStyle: next }));
+      linkEnabled = block.data.taglineLinkEnabled ?? false;
+      linkUrl = block.data.taglineLinkUrl ?? "";
+      onLinkEnabledChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { taglineLinkEnabled: next }));
+      onLinkUrlChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { taglineLinkUrl: next }));
+    } else if (target.scope === "footerLead" && block?.type === "footer") {
+      value = block.data.leadText ?? "";
+      style = block.data.leadStyle;
+      placeholder = block.data.leadPlaceholder ?? "";
+      onValueChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leadText: next }));
+      onStyleChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { leadStyle: next }));
     }
 
     const resolvedStyle = ensureTextStyle(style);
+    const previewSnippet =
+      (value || placeholder || label || "Preview").slice(0, 15) || "Preview";
+    const inputFontKey =
+      hoverFont && hasSelection
+        ? hoverFont
+        : resolvedStyle.font ?? globals.bodyFont ?? "sans";
+    const sortedFonts = sortFontOptions(fontOptions, usedFonts);
+    const fontList = [
+      { value: "", label: "Use global" },
+      ...sortedFonts.map((option) => ({ value: option.value, label: option.label })),
+    ];
 
-    return (
+    return withModal(
       <div className={cardClass}>
         <div className="flex items-center justify-between">
           <p className={labelClass}>{label}</p>
@@ -768,22 +1718,176 @@ export default function InlineEditPanel({
             </button>
           ) : null}
         </div>
-        <label className="mt-3 text-[10px] text-stone-500">
-          Text
-          {multiline ? (
-            <textarea
-              className={`${inputClass} min-h-[90px]`}
-              value={value}
-              onChange={(event) => onValueChange(event.target.value)}
-            />
-          ) : (
+        {visibilityControl ? <div className="mt-3">{visibilityControl}</div> : null}
+        <div className="mt-3 grid gap-3 sm:grid-cols-[1.2fr_1fr]">
+          <label className="text-[10px] text-stone-500">
+            Text
+            {multiline ? (
+              <textarea
+                ref={(node) => {
+                  textInputRef.current = node;
+                }}
+                className={`${inputClass} min-h-[90px]`}
+                style={{ fontFamily: fontFamilyForKey(inputFontKey) }}
+                value={value}
+                onChange={(event) => onValueChange(event.target.value)}
+                onSelect={() => {
+                  const node = textInputRef.current;
+                  if (!node) return;
+                  setHasSelection(
+                    node.selectionStart !== null &&
+                      node.selectionEnd !== null &&
+                      node.selectionStart !== node.selectionEnd
+                  );
+                }}
+                onBlur={() => {
+                  setHasSelection(false);
+                  setHoverFont(null);
+                }}
+              />
+            ) : (
+              <input
+                ref={(node) => {
+                  textInputRef.current = node;
+                }}
+                className={inputClass}
+                style={{ fontFamily: fontFamilyForKey(inputFontKey) }}
+                value={value}
+                onChange={(event) => onValueChange(event.target.value)}
+                onSelect={() => {
+                  const node = textInputRef.current;
+                  if (!node) return;
+                  setHasSelection(
+                    node.selectionStart !== null &&
+                      node.selectionEnd !== null &&
+                      node.selectionStart !== node.selectionEnd
+                  );
+                }}
+                onBlur={() => {
+                  setHasSelection(false);
+                  setHoverFont(null);
+                }}
+              />
+            )}
+          </label>
+          <div className="text-[10px] text-stone-500">
+            Font
+            <button
+              ref={(node) => {
+                fontButtonRef.current = node;
+              }}
+              type="button"
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-left text-xs text-stone-700"
+              onClick={() => {
+                const rect = fontButtonRef.current?.getBoundingClientRect();
+                if (rect) {
+                  setFontPickerPos({
+                    top: rect.top,
+                    left: rect.right + 16,
+                  });
+                }
+                setFontPickerOpen((prev) => !prev);
+              }}
+            >
+              {resolvedStyle.font
+                ? fontOptions.find((option) => option.value === resolvedStyle.font)?.label
+                : "Use global"}
+            </button>
+            <p className="mt-2 text-[10px] text-stone-400">
+              Font picker opens as an overlay.
+            </p>
+          </div>
+        </div>
+        {fontPickerOpen && (
+          <div
+            ref={(node) => {
+              fontPanelRef.current = node;
+            }}
+            className="fixed z-[60] w-[320px] rounded-2xl border border-stone-200 bg-white p-3 shadow-2xl"
+            style={{ top: fontPickerPos.top, left: fontPickerPos.left }}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Fonts
+              </p>
+              <button
+                type="button"
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={() => setFontPickerOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-72 overflow-y-auto pr-1">
+              {fontList.map((option) => {
+                const isSelected = option.value
+                  ? resolvedStyle.font === option.value
+                  : !resolvedStyle.font;
+                const previewFont = option.value
+                  ? fontFamilyForKey(option.value as TextStyle["font"])
+                  : fontFamilyForKey(globals.bodyFont ?? "sans");
+                return (
+                  <button
+                    key={option.value || "global"}
+                    type="button"
+                    className={`mb-2 flex w-full items-center justify-between rounded-md border px-2 py-2 text-left ${
+                      isSelected
+                        ? "border-amber-300 bg-amber-50 text-stone-900"
+                        : "border-transparent text-stone-600 hover:border-stone-200 hover:bg-stone-50"
+                    }`}
+                    onMouseEnter={() =>
+                      setHoverFont(
+                        option.value ? (option.value as TextStyle["font"]) : null
+                      )
+                    }
+                    onMouseLeave={() => setHoverFont(null)}
+                    onClick={() => {
+                      onStyleChange({
+                        ...resolvedStyle,
+                        font: option.value ? (option.value as TextStyle["font"]) : undefined,
+                      });
+                      setFontPickerOpen(false);
+                    }}
+                  >
+                    <span className="mr-2 text-[9px] uppercase tracking-[0.2em] text-stone-400">
+                      {option.label}
+                    </span>
+                    <span
+                      className="text-sm text-stone-700"
+                      style={{ fontFamily: previewFont }}
+                    >
+                      {previewSnippet}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[10px] text-stone-400">
+              Hover to preview (select text first).
+            </p>
+          </div>
+        )}
+        <div className="mt-3 space-y-2">
+          <label className="flex items-center gap-2 text-[10px] text-stone-500">
             <input
-              className={inputClass}
-              value={value}
-              onChange={(event) => onValueChange(event.target.value)}
+              type="checkbox"
+              checked={linkEnabled}
+              onChange={(event) => onLinkEnabledChange(event.target.checked)}
             />
-          )}
-        </label>
+            Enable link
+          </label>
+          {linkEnabled ? (
+            <label className="text-[10px] text-stone-500">
+              Link URL
+              <input
+                className={inputClass}
+                value={linkUrl}
+                onChange={(event) => onLinkUrlChange(event.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+          ) : null}
+        </div>
         <label className="mt-3 text-[10px] text-stone-500">
           Size ({resolvedStyle.size}px)
           <input
@@ -830,8 +1934,8 @@ export default function InlineEditPanel({
             <input
               className={rangeClass}
               type="range"
-              min={-200}
-              max={200}
+              min={-400}
+              max={400}
               step={1}
               value={clamp(resolvedStyle.x ?? 0, -200, 200)}
               onChange={(event) =>
@@ -844,8 +1948,8 @@ export default function InlineEditPanel({
             <input
               className={rangeClass}
               type="range"
-              min={-200}
-              max={200}
+              min={-400}
+              max={400}
               step={1}
               value={clamp(resolvedStyle.y ?? 0, -200, 200)}
               onChange={(event) =>
@@ -860,6 +1964,88 @@ export default function InlineEditPanel({
         >
           Center text
         </button>
+        {target.scope === "footerLead" && block?.type === "footer" ? (
+          <div className="mt-4 space-y-2">
+            <label className="text-[10px] text-stone-500">
+              Placeholder
+              <input
+                className={inputClass}
+                value={block.data.leadPlaceholder ?? ""}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex!, {
+                      leadPlaceholder: event.target.value,
+                    })
+                  )
+                }
+              />
+            </label>
+            <label className="flex items-center gap-2 text-[10px] text-stone-500">
+              <input
+                type="checkbox"
+                checked={block.data.showLeadLogo ?? true}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex!, {
+                      showLeadLogo: event.target.checked,
+                    })
+                  )
+                }
+              />
+              Show logo above lead
+            </label>
+          </div>
+        ) : null}
+        {target.scope === "footerTagline" && block?.type === "footer" ? (
+          <div className="mt-5 space-y-3">
+            <p className={labelClass}>Footer links</p>
+            {block.data.links.map((link, linkIndex) => (
+              <div key={`${link.label}-${linkIndex}`} className="grid gap-2 sm:grid-cols-2">
+                <input
+                  className={inputClass}
+                  value={link.label}
+                  onChange={(event) => {
+                    const next = [...block.data.links];
+                    next[linkIndex] = { ...next[linkIndex], label: event.target.value };
+                    onChangeContent(updateBlock(content, target.blockIndex!, { links: next }));
+                  }}
+                  placeholder="Label"
+                />
+                <input
+                  className={inputClass}
+                  value={link.href}
+                  onChange={(event) => {
+                    const next = [...block.data.links];
+                    next[linkIndex] = { ...next[linkIndex], href: event.target.value };
+                    onChangeContent(updateBlock(content, target.blockIndex!, { links: next }));
+                  }}
+                  placeholder="https://"
+                />
+                <button
+                  className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+                  onClick={() => {
+                    const next = block.data.links.filter((_, i) => i !== linkIndex);
+                    onChangeContent(updateBlock(content, target.blockIndex!, { links: next }));
+                  }}
+                >
+                  Remove link
+                </button>
+              </div>
+            ))}
+            <button
+              className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+              onClick={() =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex!, {
+                    links: [...block.data.links, { label: "New link", href: "#" }],
+                  })
+                )
+              }
+            >
+              Add link
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }

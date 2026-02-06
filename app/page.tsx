@@ -1,49 +1,72 @@
 import BlockRenderer from "@/components/blocks/BlockRenderer";
 import IntroOverlay from "@/components/IntroOverlay";
-import SiteHeader from "@/components/SiteHeader";
+import HomePageShell from "@/components/HomePageShell";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
+import { fontFamilyForKey } from "@/lib/content/fonts";
+import type { FontKey } from "@/lib/content/types";
 
 export const revalidate = 0;
 
 export default async function Home() {
   const content = await getPublishedContent();
   const globals = await getPublishedGlobals();
-  const styleFrom = (style?: { size: number; weight: number; italic?: boolean; x?: number; y?: number }) =>
+  const styleFrom = (style?: {
+    size: number;
+    weight: number;
+    italic?: boolean;
+    x?: number;
+    y?: number;
+    font?: FontKey;
+  }) =>
     style
       ? {
           fontSize: `${style.size}px`,
           fontWeight: style.weight,
           fontStyle: style.italic ? "italic" : "normal",
           transform: `translate(${style.x ?? 0}px, ${style.y ?? 0}px)`,
+          fontFamily: fontFamilyForKey(style.font),
         }
       : undefined;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-stone-100 text-stone-900">
+    <>
       <IntroOverlay
         logoText={globals.logoText}
         motto={globals.motto}
-        logoTextStyle={styleFrom(globals.logoTextStyle)}
-        mottoStyle={styleFrom(globals.mottoStyle)}
+        logoTextStyle={{
+          ...(styleFrom(globals.logoTextStyle) ?? {}),
+          fontFamily: fontFamilyForKey(globals.logoTextStyle?.font ?? globals.bodyFont),
+        }}
+        mottoStyle={{
+          ...(styleFrom(globals.mottoStyle) ?? {}),
+          fontFamily: fontFamilyForKey(globals.mottoStyle?.font ?? globals.mottoFont),
+        }}
+        showLogoText={globals.showLogoText}
+        enabled={globals.introEnabled}
+        bgFrom={globals.introBgFrom}
+        bgVia={globals.introBgVia}
+        bgTo={globals.introBgTo}
+        textColor={globals.introTextColor}
+        wipeColor={globals.introWipeColor}
+        holdMs={globals.introHoldMs}
+        wipeMs={globals.introWipeMs}
+        fadeMs={globals.introFadeMs}
       />
-      <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-amber-200/50 blur-3xl" />
-        <div className="pointer-events-none absolute -right-10 top-24 h-72 w-72 rounded-full bg-stone-200/70 blur-3xl" />
-        <SiteHeader
-          logoMark={globals.logoMark}
-          logoText={globals.logoText}
-          logoTextStyle={styleFrom(globals.logoTextStyle)}
-          links={[
-            { href: "#brand", label: "Brand" },
-            { href: "#media", label: "Media" },
-            { href: "#landscape", label: "Atmosphere" },
-            { href: "/menu", label: "Menu" },
-          ]}
-        />
-        <main className="relative mx-auto max-w-6xl px-6 py-16">
-          <BlockRenderer blocks={content.blocks} globals={globals} />
-        </main>
-      </div>
-    </div>
+      <HomePageShell
+          globals={globals}
+          links={
+            globals.menuItems?.length
+              ? globals.menuItems.map((item) => ({ href: item.href, label: item.label }))
+              : [
+                  { href: "#brand", label: "Brand" },
+                  { href: "#media", label: "Media" },
+                  { href: "#landscape", label: "Atmosphere" },
+                  { href: "/menu", label: "Menu" },
+                ]
+          }
+        >
+        <BlockRenderer blocks={content.blocks} globals={globals} />
+      </HomePageShell>
+    </>
   );
 }

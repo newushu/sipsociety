@@ -1,14 +1,23 @@
-import { defaultContent, defaultGlobals } from "./defaults";
+import { defaultContent, defaultGlobals, defaultMenuContent } from "./defaults";
 import { GlobalSettings, PageContent } from "./types";
 import { createServerClient } from "@/lib/supabase/server";
 
-const normalizeContent = (content: PageContent | null | undefined): PageContent => {
+const defaultContentBySlug = (slug: string) =>
+  slug === "menu" ? defaultMenuContent : defaultContent;
+
+const normalizeContent = (
+  content: PageContent | null | undefined,
+  slug: string
+): PageContent => {
+  const fallback = defaultContentBySlug(slug);
   if (!content || !content.blocks?.length) {
-    return defaultContent;
+    return fallback;
   }
-  const allowedTypes = new Set(defaultContent.blocks.map((block) => block.type));
+  const allowedTypes = new Set(
+    [...defaultContent.blocks, ...defaultMenuContent.blocks].map((block) => block.type)
+  );
   const hasUnknown = content.blocks.some((block) => !allowedTypes.has(block.type));
-  if (hasUnknown) return defaultContent;
+  if (hasUnknown) return fallback;
   return content;
 };
 
@@ -19,22 +28,24 @@ const normalizeGlobals = (
   return { ...defaultGlobals, ...globals };
 };
 
-export const getPublishedContent = async (): Promise<PageContent> => {
+export const getPublishedContent = async (
+  slug: string = "home"
+): Promise<PageContent> => {
   try {
     const supabase = createServerClient();
     const { data, error } = await supabase
       .from("published_pages")
       .select("content")
-      .eq("slug", "home")
+      .eq("slug", slug)
       .single();
 
     if (error || !data?.content) {
-      return defaultContent;
+      return defaultContentBySlug(slug);
     }
 
-    return normalizeContent(data.content as PageContent);
+    return normalizeContent(data.content as PageContent, slug);
   } catch (error) {
-    return defaultContent;
+    return defaultContentBySlug(slug);
   }
 };
 

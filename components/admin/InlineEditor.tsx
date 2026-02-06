@@ -1,6 +1,7 @@
 "use client";
 
 import { ContentBlock, GlobalSettings, PageContent, MediaAsset } from "@/lib/content/types";
+import { fontFamilyForKey, fontOptions } from "@/lib/content/fonts";
 
 const textInput =
   "w-full bg-transparent text-inherit outline-none placeholder:text-stone-400 focus:border-b focus:border-amber-300";
@@ -76,7 +77,7 @@ const MediaControls = ({
           className={rangeClass}
           type="range"
           min={0.6}
-          max={1.6}
+          max={8}
           step={0.02}
           value={media.scale}
           onChange={(event) =>
@@ -121,6 +122,277 @@ export default function InlineEditor({
               />
             </label>
           </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="flex items-center gap-2 text-xs text-stone-600">
+              <input
+                type="checkbox"
+                checked={globals.showLogoMark ?? true}
+                onChange={(event) =>
+                  onChangeGlobals({ ...globals, showLogoMark: event.target.checked })
+                }
+              />
+              Show logo
+            </label>
+            <label className="flex items-center gap-2 text-xs text-stone-600">
+              <input
+                type="checkbox"
+                checked={globals.showLogoText ?? true}
+                onChange={(event) =>
+                  onChangeGlobals({ ...globals, showLogoText: event.target.checked })
+                }
+              />
+              Show tagline
+            </label>
+            <label className="flex items-center gap-2 text-xs text-stone-600">
+              <input
+                type="checkbox"
+                checked={globals.showLogoBox ?? true}
+                onChange={(event) =>
+                  onChangeGlobals({ ...globals, showLogoBox: event.target.checked })
+                }
+              />
+              Show logo ring
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className={labelClass}>
+              Body font
+              <select
+                className={`${textInput} mt-2 text-sm text-stone-700`}
+                value={globals.bodyFont ?? "sans"}
+                onChange={(event) =>
+                  onChangeGlobals({
+                    ...globals,
+                    bodyFont: event.target.value as typeof globals.bodyFont,
+                  })
+                }
+              >
+                {fontOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Motto font
+              <select
+                className={`${textInput} mt-2 text-sm text-stone-700`}
+                value={globals.mottoFont ?? "display"}
+                onChange={(event) =>
+                  onChangeGlobals({
+                    ...globals,
+                    mottoFont: event.target.value as typeof globals.mottoFont,
+                  })
+                }
+              >
+                {fontOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Brand heading font
+              <select
+                className={`${textInput} mt-2 text-sm text-stone-700`}
+                value={globals.brandHeadingFont ?? "sans"}
+                onChange={(event) =>
+                  onChangeGlobals({
+                    ...globals,
+                    brandHeadingFont: event.target.value as typeof globals.brandHeadingFont,
+                  })
+                }
+              >
+                {fontOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Brand message font
+              <select
+                className={`${textInput} mt-2 text-sm text-stone-700`}
+                value={globals.brandMessageFont ?? "display"}
+                onChange={(event) =>
+                  onChangeGlobals({
+                    ...globals,
+                    brandMessageFont: event.target.value as typeof globals.brandMessageFont,
+                  })
+                }
+              >
+                {fontOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button
+            className="rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold text-stone-700"
+            onClick={() => {
+              const nextGlobals: GlobalSettings = {
+                ...globals,
+                logoTextStyle: {
+                  ...(globals.logoTextStyle ?? {
+                    size: 12,
+                    weight: 600,
+                    italic: false,
+                    x: 0,
+                    y: 0,
+                  }),
+                  font: globals.bodyFont,
+                },
+                mottoStyle: {
+                  ...(globals.mottoStyle ?? {
+                    size: 40,
+                    weight: 600,
+                    italic: false,
+                    x: 0,
+                    y: 0,
+                  }),
+                  font: globals.mottoFont,
+                },
+                brandMessageStyle: {
+                  ...(globals.brandMessageStyle ?? {
+                    size: 30,
+                    weight: 600,
+                    italic: false,
+                    x: 0,
+                    y: 0,
+                  }),
+                  font: globals.brandMessageFont,
+                },
+              };
+
+              const nextContent: PageContent = {
+                ...content,
+                blocks: content.blocks.map((block) => {
+                  if (block.type === "hero") {
+                    return {
+                      ...block,
+                      data: {
+                        ...block.data,
+                        taglineStyle: {
+                          ...(block.data.taglineStyle ?? {
+                            size: 48,
+                            weight: 600,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.bodyFont,
+                        },
+                      },
+                    };
+                  }
+                  if (block.type === "brand-message") {
+                    return {
+                      ...block,
+                      data: {
+                        ...block.data,
+                        headingStyle: {
+                          ...(block.data.headingStyle ?? {
+                            size: 12,
+                            weight: 600,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.brandHeadingFont,
+                        },
+                        messageStyle: {
+                          ...(block.data.messageStyle ?? {
+                            size: 30,
+                            weight: 600,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.brandMessageFont,
+                        },
+                      },
+                    };
+                  }
+                  if (block.type === "triple-media") {
+                    return {
+                      ...block,
+                      data: {
+                        ...block.data,
+                        leftTitleStyle: {
+                          ...(block.data.leftTitleStyle ?? {
+                            size: 30,
+                            weight: 600,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.bodyFont,
+                        },
+                        leftBodyStyle: {
+                          ...(block.data.leftBodyStyle ?? {
+                            size: 16,
+                            weight: 500,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.bodyFont,
+                        },
+                      },
+                    };
+                  }
+                  if (block.type === "landscape") {
+                    return {
+                      ...block,
+                      data: {
+                        ...block.data,
+                        captionStyle: {
+                          ...(block.data.captionStyle ?? {
+                            size: 18,
+                            weight: 600,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.bodyFont,
+                        },
+                      },
+                    };
+                  }
+                  if (block.type === "footer") {
+                    return {
+                      ...block,
+                      data: {
+                        ...block.data,
+                        taglineStyle: {
+                          ...(block.data.taglineStyle ?? {
+                            size: 14,
+                            weight: 500,
+                            italic: false,
+                            x: 0,
+                            y: 0,
+                          }),
+                          font: globals.bodyFont,
+                        },
+                      },
+                    };
+                  }
+                  return block;
+                }),
+              };
+
+              onChangeGlobals(nextGlobals);
+              onChangeContent(nextContent);
+            }}
+            type="button"
+          >
+            Apply global fonts to all text
+          </button>
           <label className={labelClass}>
             Motto
             <input
@@ -133,10 +405,20 @@ export default function InlineEditor({
           </label>
         </div>
         <div className="rounded-2xl bg-stone-900 p-6 text-white">
-          <p className="text-xs uppercase tracking-[0.3em] text-amber-200/80">
-            {globals.logoText}
+          {globals.showLogoText ? (
+            <p
+              className="text-xs uppercase tracking-[0.3em] text-amber-200/80"
+              style={{ fontFamily: fontFamilyForKey(globals.bodyFont) }}
+            >
+              {globals.logoText}
+            </p>
+          ) : null}
+          <p
+            className="mt-4 text-2xl font-semibold"
+            style={{ fontFamily: fontFamilyForKey(globals.mottoFont) }}
+          >
+            {globals.motto}
           </p>
-          <p className="mt-4 text-2xl font-semibold">{globals.motto}</p>
           <p className="mt-4 text-sm text-amber-100/70">
             Inline edits update the draft preview. Save to keep changes.
           </p>
@@ -239,7 +521,7 @@ export default function InlineEditor({
                       className={rangeClass}
                       type="range"
                       min={0.6}
-                      max={1.6}
+                      max={8}
                       step={0.02}
                       value={videoScale}
                       onChange={(event) =>

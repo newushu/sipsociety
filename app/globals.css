@@ -36,3 +36,124 @@ h4 {
 .video-fade-loop {
   animation: videoFadeLoop 2s ease-in-out infinite;
 }
+
+@keyframes curtainReveal {
+  0% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes tracerSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sweepSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.curtain-wipe {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, #f8f3ea 0%, #f1ede3 50%, #f8f3ea 100%);
+  transform-origin: left;
+  transform: scaleX(1);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.is-revealed .curtain-wipe {
+  animation: curtainReveal 1.6s ease forwards;
+}
+
+.border-effect,
+.border-tracer,
+.border-sweep {
+  pointer-events: none;
+  position: absolute;
+  inset: 6px;
+  border-radius: inherit;
+  opacity: 0;
+}
+
+.border-tracer {
+  padding: 1px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 1) 15deg,
+    rgba(255, 230, 180, 0.95) 35deg,
+    transparent 55deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 8px rgba(255, 220, 160, 0.7));
+}
+
+.border-sweep {
+  padding: 2px;
+  background: conic-gradient(
+    from 90deg,
+    rgba(255, 255, 255, 0) 0deg,
+    rgba(255, 245, 220, 0.9) 60deg,
+    rgba(255, 255, 255, 0) 140deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 10px rgba(255, 230, 180, 0.8));
+}
+
+.is-revealed .border-tracer {
+  opacity: 1;
+  animation: tracerSpin 3.5s linear infinite;
+}
+
+.is-revealed .border-sweep {
+  opacity: 0.95;
+  animation: sweepSpin 2s linear forwards;
+}
+
+.site-header {
+  transition: opacity 0.3s ease;
+}
+
+html[data-intro="true"] .site-header {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.brand-anim {
+  opacity: 1;
+  transform-origin: center;
+  transition: transform 0.6s ease, opacity 0.6s ease;
+}
+
+.brand-anim-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+}
+
+.brand-anim-roll {
+  opacity: 0;
+  transform: translateY(24px) rotateX(12deg) scale(0.98);
+}
+
+.brand-anim-reveal.is-revealed,
+.brand-anim-roll.is-revealed {
+  opacity: 1;
+  transform: translateY(0) rotateX(0deg) scale(1);
+}

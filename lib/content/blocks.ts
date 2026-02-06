@@ -1,8 +1,11 @@
 import { BlockType, ContentBlock } from "./types";
-import { defaultContent } from "./defaults";
+import { defaultContent, defaultMenuContent } from "./defaults";
 
 const templatesByType: Record<BlockType, ContentBlock> = Object.fromEntries(
-  defaultContent.blocks.map((block) => [block.type, block])
+  [...defaultContent.blocks, ...defaultMenuContent.blocks].map((block) => [
+    block.type,
+    block,
+  ])
 ) as Record<BlockType, ContentBlock>;
 
 const createId = () => {
@@ -27,4 +30,5 @@ export const blockTypes: { label: string; value: BlockType }[] = [
   { label: "Triple Media", value: "triple-media" },
   { label: "Landscape", value: "landscape" },
   { label: "Footer", value: "footer" },
+  { label: "Menu", value: "menu" },
 ];

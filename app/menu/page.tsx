@@ -1,67 +1,43 @@
 import SiteHeader from "@/components/SiteHeader";
-import { getPublishedGlobals } from "@/lib/content/store";
+import { defaultMenuContent } from "@/lib/content/defaults";
+import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
+import { fontFamilyForKey } from "@/lib/content/fonts";
+import { MenuBlock, TextStyle } from "@/lib/content/types";
 
 export const revalidate = 0;
 
-const menuSections = [
-  {
-    title: "Coffee",
-    items: [
-      { name: "Vietnamese Phin", detail: "Condensed milk, slow drip", price: "$6" },
-      { name: "Cold Brew", detail: "Cacao nibs, orange zest", price: "$5" },
-      { name: "Latte", detail: "Oat or whole milk", price: "$5.5" },
-    ],
-  },
-  {
-    title: "Espresso",
-    items: [
-      { name: "Espresso", detail: "Single origin", price: "$3.5" },
-      { name: "Cortado", detail: "Equal parts espresso and milk", price: "$4.5" },
-      { name: "Affogato", detail: "Espresso over vanilla gelato", price: "$6.5" },
-    ],
-  },
-  {
-    title: "Tea",
-    items: [
-      { name: "Jasmine Green", detail: "Floral, bright", price: "$4" },
-      { name: "Oolong", detail: "Roasted, nutty", price: "$4.5" },
-      { name: "Chai", detail: "Spiced, creamy", price: "$5" },
-    ],
-  },
-  {
-    title: "Bakery",
-    items: [
-      { name: "Butter Croissant", detail: "Flaky, warm", price: "$4" },
-      { name: "Almond Kouign Amann", detail: "Caramelized, rich", price: "$5" },
-      { name: "Cinnamon Bun", detail: "Brown sugar glaze", price: "$4.5" },
-    ],
-  },
-];
-
 export default async function MenuPage() {
+  const content = await getPublishedContent("menu");
   const globals = await getPublishedGlobals();
-  const styleFrom = (style?: {
-    size: number;
-    weight: number;
-    italic?: boolean;
-    x?: number;
-    y?: number;
-  }) =>
+  const menuBlock =
+    (content.blocks.find((block) => block.type === "menu") as MenuBlock) ??
+    (defaultMenuContent.blocks[0] as MenuBlock);
+  const styleFrom = (style?: TextStyle) =>
     style
       ? {
           fontSize: `${style.size}px`,
           fontWeight: style.weight,
           fontStyle: style.italic ? "italic" : "normal",
           transform: `translate(${style.x ?? 0}px, ${style.y ?? 0}px)`,
+          fontFamily: fontFamilyForKey(style.font),
         }
       : undefined;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-stone-100 text-stone-900">
+    <div
+      className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-stone-100 text-stone-900"
+      style={{ fontFamily: fontFamilyForKey(globals.bodyFont) }}
+    >
       <SiteHeader
         logoMark={globals.logoMark}
         logoText={globals.logoText}
-        logoTextStyle={styleFrom(globals.logoTextStyle)}
+        logoTextStyle={{
+          ...(styleFrom(globals.logoTextStyle) ?? {}),
+          fontFamily: fontFamilyForKey(globals.logoTextStyle?.font ?? globals.bodyFont),
+        }}
+        showLogoMark={globals.showLogoMark}
+        showLogoText={globals.showLogoText}
+        showLogoBox={globals.showLogoBox}
         links={[
           { href: "/", label: "Home" },
           { href: "/menu", label: "Menu" },
@@ -76,17 +52,18 @@ export default async function MenuPage() {
             Sip Society Menu
           </p>
           <h1 className="mt-4 text-4xl font-semibold text-stone-900 sm:text-5xl">
-            Slow sips, bright ideas.
+            {menuBlock.data.heading}
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-stone-600">
-            Seasonal rotations and small-lot offerings. Ask the bar for today’s
-            featured beans and rare pours.
+            {menuBlock.data.subheading}
           </p>
-          <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-            Menu items below are placeholders. Swap in your real offerings any time.
-          </div>
+          {menuBlock.data.note ? (
+            <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-600">
+              {menuBlock.data.note}
+            </div>
+          ) : null}
           <div className="mt-10 grid gap-8 lg:grid-cols-2">
-            {menuSections.map((section) => (
+            {menuBlock.data.sections.map((section) => (
               <section
                 key={section.title}
                 className="rounded-3xl border border-stone-200 bg-stone-50/80 p-6"

@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BlockEditor from "@/components/admin/BlockEditor";
 import { blockTypes, createBlock } from "@/lib/content/blocks";
-import { defaultContent, defaultGlobals } from "@/lib/content/defaults";
-import { ContentBlock, GlobalSettings, PageContent } from "@/lib/content/types";
+import { defaultContent, defaultGlobals, defaultMenuContent } from "@/lib/content/defaults";
+import { ContentBlock, FontKey, GlobalSettings, PageContent } from "@/lib/content/types";
 import InlineEditor from "@/components/admin/InlineEditor";
 import InlinePreview from "@/components/admin/InlinePreview";
 import InlineEditPanel from "@/components/admin/InlineEditPanel";
 import { InlineEditTarget } from "@/components/admin/inlineEditTypes";
 import { createBrowserClient } from "@/lib/supabase/browser";
+import HomePageShell from "@/components/HomePageShell";
+import IntroOverlay from "@/components/IntroOverlay";
+import { fontFamilyForKey, fontOptions, sortFontOptions } from "@/lib/content/fonts";
 
 const formInput =
   "w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm";
@@ -22,24 +25,168 @@ export default function AdminClient() {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isRecovery, setIsRecovery] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.location.hash.includes("type=recovery");
+  });
   const [content, setContent] = useState<PageContent>(defaultContent);
   const [globals, setGlobals] = useState<GlobalSettings>(defaultGlobals);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState(blockTypes[0].value);
   const [panel, setPanel] = useState<
-    "workspace" | "identity" | "inline" | "blocks" | "menu" | "publishing"
+    | "workspace"
+    | "identity"
+    | "inline"
+    | "intro"
+    | "blocks"
+    | "menu"
+    | "media"
+    | "publishing"
   >("workspace");
   const [activeBlockIndex, setActiveBlockIndex] = useState<number | null>(0);
   const [showInlineControls, setShowInlineControls] = useState(false);
+  const [showInlineChips, setShowInlineChips] = useState(true);
+  const [showChipsToggle, setShowChipsToggle] = useState(true);
+  const [dragMenuId, setDragMenuId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return 298;
+    const stored = window.localStorage.getItem("adminSidebarWidth");
+    if (!stored) return 298;
+    const parsed = Number(stored);
+    return Number.isNaN(parsed) ? 298 : parsed;
+  });
+  const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const hideChipsToggleRef = useRef<number | null>(null);
   const [inlineEditTarget, setInlineEditTarget] = useState<InlineEditTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
+  const [activePageSlug, setActivePageSlug] = useState<"home" | "menu">("home");
+  const [introPreviewKey, setIntroPreviewKey] = useState(0);
+  const [mediaAssets, setMediaAssets] = useState<
+    { name: string; url: string; createdAt?: string | null }[]
+  >([]);
+  const [mediaSearch, setMediaSearch] = useState("");
+  const [mediaFilter, setMediaFilter] = useState<"all" | "15m" | "1h" | "1d" | "1w">("all");
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const usedFonts = useMemo(() => {
+    const used = new Set<FontKey>();
+    if (globals.bodyFont) used.add(globals.bodyFont);
+    if (globals.mottoFont) used.add(globals.mottoFont);
+    if (globals.brandHeadingFont) used.add(globals.brandHeadingFont);
+    if (globals.brandMessageFont) used.add(globals.brandMessageFont);
+    if (globals.logoTextStyle?.font) used.add(globals.logoTextStyle.font);
+    if (globals.mottoStyle?.font) used.add(globals.mottoStyle.font);
+    if (globals.brandMessageStyle?.font) used.add(globals.brandMessageStyle.font);
+    if (globals.menuButtonFont) used.add(globals.menuButtonFont);
+    if (globals.menuItemFont) used.add(globals.menuItemFont);
+    content.blocks.forEach((block) => {
+      if (block.type === "hero" && block.data.taglineStyle?.font) {
+        used.add(block.data.taglineStyle.font);
+      }
+      if (block.type === "brand-message") {
+        if (block.data.headingStyle?.font) used.add(block.data.headingStyle.font);
+        if (block.data.messageStyle?.font) used.add(block.data.messageStyle.font);
+      }
+      if (block.type === "triple-media") {
+        if (block.data.leftTitleStyle?.font) used.add(block.data.leftTitleStyle.font);
+        if (block.data.leftBodyStyle?.font) used.add(block.data.leftBodyStyle.font);
+      }
+      if (block.type === "landscape" && block.data.captionStyle?.font) {
+        used.add(block.data.captionStyle.font);
+      }
+      if (block.type === "footer" && block.data.taglineStyle?.font) {
+        used.add(block.data.taglineStyle.font);
+      }
+    });
+    return used;
+  }, [content.blocks, globals]);
+  const sortedFontOptions = useMemo(
+    () => sortFontOptions(fontOptions, usedFonts),
+    [usedFonts]
+  );
+
+  const pageOptions = [
+    { slug: "home", label: "Home" },
+    { slug: "menu", label: "Menu" },
+  ] as const;
+
+  const defaultContentForSlug = (slug: "home" | "menu") =>
+    slug === "menu" ? defaultMenuContent : defaultContent;
+
+  const introPalette = [
+    "#0c0a09",
+    "#1c1917",
+    "#111827",
+    "#0f172a",
+    "#7c2d12",
+    "#78350f",
+    "#a16207",
+    "#f59e0b",
+    "#fde68a",
+    "#f5f5f4",
+  ];
+
+  const handleIntroDone = useCallback(() => {
+    setIntroPreviewKey(0);
+  }, []);
+
+  const isMediaInRange = useCallback(
+    (asset: { createdAt?: string | null }, filter: typeof mediaFilter) => {
+      if (filter === "all") return true;
+      const stamp = asset.createdAt;
+      if (!stamp) return false;
+      const date = new Date(stamp);
+      if (Number.isNaN(date.getTime())) return false;
+      const minutes = (Date.now() - date.getTime()) / 60000;
+      if (minutes < 0) return false;
+      if (filter === "15m") return minutes <= 15;
+      if (filter === "1h") return minutes <= 60;
+      if (filter === "1d") return minutes <= 60 * 24;
+      if (filter === "1w") return minutes <= 60 * 24 * 7;
+      return true;
+    },
+    [mediaFilter]
+  );
+
+  const loadMediaLibrary = useCallback(async () => {
+    setMediaLoading(true);
+    setMediaError(null);
+    const { data, error } = await supabase.storage.from("media").list("", {
+      limit: 200,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+    if (error) {
+      setMediaError(error.message);
+      setMediaLoading(false);
+      return;
+    }
+    const items =
+      data?.map((item) => ({
+        name: item.name,
+        url: supabase.storage.from("media").getPublicUrl(item.name).data.publicUrl,
+        createdAt: item.created_at ?? null,
+      })) ?? [];
+    setMediaAssets(items);
+    setMediaLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    if (panel !== "media") return;
+    const timer = window.setTimeout(() => {
+      void loadMediaLibrary();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [panel, loadMediaLibrary]);
 
   const containerClass =
     panel === "inline"
-      ? "mx-auto flex w-full flex-col gap-6 px-6 py-10"
+      ? "mx-auto flex w-full max-w-none flex-col gap-6 px-0 py-10"
       : "mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10";
 
   useEffect(() => {
@@ -63,20 +210,18 @@ export default function AdminClient() {
         .single();
 
       setRole(profile?.role ?? null);
-      await Promise.all([loadDraft(), loadGlobals()]);
+      await Promise.all([loadDraft(activePageSlug), loadGlobals()]);
       setLoading(false);
     };
 
-    const loadDraft = async () => {
+    const loadDraft = async (slug: "home" | "menu") => {
       const { data } = await supabase
         .from("pages")
         .select("draft")
-        .eq("slug", "home")
+        .eq("slug", slug)
         .single();
       if (!mounted) return;
-      if (data?.draft) {
-        setContent(data.draft as PageContent);
-      }
+      setContent((data?.draft as PageContent) ?? defaultContentForSlug(slug));
     };
 
     const loadGlobals = async () => {
@@ -101,15 +246,78 @@ export default function AdminClient() {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, activePageSlug]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setIsRecovery(true);
-    }
+    window.localStorage.setItem("adminSidebarWidth", String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      if (!sidebarDragRef.current) return;
+      const next = sidebarDragRef.current.startWidth + (event.clientX - sidebarDragRef.current.startX);
+      setSidebarWidth(Math.min(420, Math.max(240, next)));
+    };
+    const handleUp = () => {
+      sidebarDragRef.current = null;
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
   }, []);
+
+  useEffect(() => {
+    if (panel !== "inline") return;
+    const showTemporarily = () => {
+      setShowChipsToggle(true);
+      if (hideChipsToggleRef.current) {
+        window.clearTimeout(hideChipsToggleRef.current);
+      }
+      hideChipsToggleRef.current = window.setTimeout(() => {
+        setShowChipsToggle(false);
+      }, 5000);
+    };
+    const handleMove = (event: MouseEvent) => {
+      if (event.clientY < 80) showTemporarily();
+    };
+    const handleScroll = () => showTemporarily();
+    showTemporarily();
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("scroll", handleScroll, true);
+      if (hideChipsToggleRef.current) {
+        window.clearTimeout(hideChipsToggleRef.current);
+        hideChipsToggleRef.current = null;
+      }
+    };
+  }, [panel]);
+
+  useEffect(() => {
+    if (!sessionEmail) return;
+    const resetTimer = window.setTimeout(() => {
+      setStatus(null);
+      setInlineEditTarget(null);
+      setActiveBlockIndex(0);
+    }, 0);
+    const fetchPage = async () => {
+      const { data } = await supabase
+        .from("pages")
+        .select("draft")
+        .eq("slug", activePageSlug)
+        .single();
+      setContent((data?.draft as PageContent) ?? defaultContentForSlug(activePageSlug));
+    };
+    fetchPage();
+    return () => {
+      window.clearTimeout(resetTimer);
+    };
+  }, [activePageSlug, sessionEmail, supabase]);
 
   const handleSignIn = async () => {
     setStatus(null);
@@ -230,7 +438,7 @@ export default function AdminClient() {
     setIsSaving(true);
     const [{ error: pageError }, { error: globalError }] = await Promise.all([
       supabase.from("pages").upsert({
-        slug: "home",
+        slug: activePageSlug,
         title: content.title,
         draft: content,
         updated_at: new Date().toISOString(),
@@ -249,6 +457,23 @@ export default function AdminClient() {
     setIsSaving(false);
   };
 
+  const autosaveRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (loading || !role) return;
+    if (isSaving || isPublishing) return;
+    if (autosaveRef.current) {
+      window.clearTimeout(autosaveRef.current);
+    }
+    autosaveRef.current = window.setTimeout(() => {
+      saveDraft();
+    }, 8000);
+    return () => {
+      if (autosaveRef.current) {
+        window.clearTimeout(autosaveRef.current);
+      }
+    };
+  }, [content, globals, activePageSlug, loading, role, isSaving, isPublishing]);
+
   const updateBrandMessage = (value: string) => {
     setGlobals((prev) => ({ ...prev, brandMessage: value }));
     setContent((prev) => ({
@@ -266,7 +491,7 @@ export default function AdminClient() {
     setIsPublishing(true);
     const [{ error: pageError }, { error: globalError }] = await Promise.all([
       supabase.from("pages").upsert({
-        slug: "home",
+        slug: activePageSlug,
         title: content.title,
         draft: content,
         published: content,
@@ -406,7 +631,7 @@ export default function AdminClient() {
           </p>
           <p className="text-sm text-stone-600">
             Your account does not have admin access yet. Update your role in the
-            Supabase profiles table to "admin".
+            Supabase profiles table to &quot;admin&quot;.
           </p>
           <button
             className="rounded-full border border-stone-200 px-6 py-3 text-sm font-semibold text-stone-900"
@@ -420,9 +645,46 @@ export default function AdminClient() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-800">
-      <div className="flex min-h-screen">
-        <aside className="sticky top-0 hidden h-screen w-72 flex-col gap-4 border-r border-stone-200 bg-white px-5 py-8 shadow-sm lg:flex">
+    <>
+      {introPreviewKey > 0 && (
+          <IntroOverlay
+            logoText={globals.logoText}
+            motto={globals.motto}
+            logoTextStyle={{
+              fontSize: `${globals.logoTextStyle?.size ?? 12}px`,
+              fontWeight: globals.logoTextStyle?.weight ?? 600,
+              fontStyle: globals.logoTextStyle?.italic ? "italic" : "normal",
+              transform: `translate(${globals.logoTextStyle?.x ?? 0}px, ${globals.logoTextStyle?.y ?? 0}px)`,
+              fontFamily: fontFamilyForKey(globals.bodyFont),
+            }}
+            mottoStyle={{
+              fontSize: `${globals.mottoStyle?.size ?? 40}px`,
+              fontWeight: globals.mottoStyle?.weight ?? 600,
+              fontStyle: globals.mottoStyle?.italic ? "italic" : "normal",
+              transform: `translate(${globals.mottoStyle?.x ?? 0}px, ${globals.mottoStyle?.y ?? 0}px)`,
+              fontFamily: fontFamilyForKey(globals.mottoFont),
+            }}
+          showLogoText={globals.showLogoText}
+          enabled
+          bgFrom={globals.introBgFrom}
+          bgVia={globals.introBgVia}
+          bgTo={globals.introBgTo}
+          textColor={globals.introTextColor}
+          wipeColor={globals.introWipeColor}
+          holdMs={globals.introHoldMs}
+          wipeMs={globals.introWipeMs}
+          fadeMs={globals.introFadeMs}
+          playId={introPreviewKey}
+          onDone={handleIntroDone}
+        />
+      )}
+      <div className="min-h-screen bg-stone-50 text-stone-800">
+        <div className="flex min-h-screen">
+          {showSidebar ? (
+            <aside
+              className="sticky top-0 z-30 hidden h-screen flex-col gap-4 overflow-y-auto border-r border-stone-200 bg-white px-5 py-8 shadow-sm lg:flex"
+              style={{ width: `${sidebarWidth}px` }}
+            >
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
               Admin workspace
@@ -450,15 +712,29 @@ export default function AdminClient() {
               className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-left"
               onClick={() => setPanel("inline")}
             >
-              <p className="font-semibold text-stone-900">Inline view - Home</p>
+              <p className="font-semibold text-stone-900">Edit Page Inline</p>
               <p className="text-xs text-stone-500">Preview + edit in context</p>
+            </button>
+            <button
+              className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-left"
+              onClick={() => setPanel("media")}
+            >
+              <p className="font-semibold text-stone-900">Media library</p>
+              <p className="text-xs text-stone-500">Manage images + videos</p>
             </button>
             <button
               className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-left"
               onClick={() => setPanel("blocks")}
             >
-              <p className="font-semibold text-stone-900">Page blocks - Home</p>
+              <p className="font-semibold text-stone-900">Page blocks</p>
               <p className="text-xs text-stone-500">Edit each section</p>
+            </button>
+            <button
+              className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-left"
+              onClick={() => setPanel("intro")}
+            >
+              <p className="font-semibold text-stone-900">Intro animation</p>
+              <p className="text-xs text-stone-500">Palette + timing controls</p>
             </button>
             <button
               className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-left"
@@ -515,10 +791,52 @@ export default function AdminClient() {
               Sign out
             </button>
           </div>
+          <div
+            className="absolute right-0 top-0 h-full w-2 cursor-col-resize"
+            onPointerDown={(event) => {
+              sidebarDragRef.current = { startX: event.clientX, startWidth: sidebarWidth };
+            }}
+          />
         </aside>
+          ) : null}
 
         <div className="flex-1">
           <div className={containerClass}>
+            {panel === "inline" ? (
+              <div
+                className={`fixed top-4 z-50 transition-opacity ${
+                  showChipsToggle ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+                style={{ left: showSidebar ? sidebarWidth + 16 : 16 }}
+                onMouseEnter={() => setShowChipsToggle(true)}
+                onMouseLeave={() => setShowChipsToggle(false)}
+              >
+                <div className="flex items-center gap-2">
+                  {!showSidebar ? (
+                    <button
+                      className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"
+                      onClick={() => setShowSidebar(true)}
+                    >
+                      Show sidebar
+                    </button>
+                  ) : null}
+                  {showSidebar ? (
+                    <button
+                      className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"
+                      onClick={() => setShowSidebar(false)}
+                    >
+                      Hide sidebar
+                    </button>
+                  ) : null}
+                  <button
+                    className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold shadow-sm"
+                    onClick={() => setShowInlineChips((prev) => !prev)}
+                  >
+                    {showInlineChips ? "Hide chips" : "Show chips"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <header className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-semibold text-stone-900">
@@ -565,6 +883,266 @@ export default function AdminClient() {
                   <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
                     Site identity
                   </h2>
+                  {(() => {
+                    const menuItems = globals.menuItems ?? defaultGlobals.menuItems ?? [];
+                    const updateMenuItems = (items: typeof menuItems) =>
+                      setGlobals({ ...globals, menuItems: items });
+                    const moveMenuItem = (fromId: string, toId: string) => {
+                      if (fromId === toId) return;
+                      const fromIndex = menuItems.findIndex((item) => item.id === fromId);
+                      const toIndex = menuItems.findIndex((item) => item.id === toId);
+                      if (fromIndex === -1 || toIndex === -1) return;
+                      const next = [...menuItems];
+                      const [moved] = next.splice(fromIndex, 1);
+                      next.splice(toIndex, 0, moved);
+                      updateMenuItems(next);
+                    };
+                    return (
+                      <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50/60 p-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Navigation menu
+                        </p>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Button text
+                            <input
+                              className={formInput}
+                              value={globals.menuButtonText ?? "MENU"}
+                              onChange={(event) =>
+                                setGlobals({ ...globals, menuButtonText: event.target.value })
+                              }
+                            />
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Button text size
+                            <input
+                              className={formInput}
+                              type="number"
+                              min={8}
+                              max={24}
+                              value={globals.menuButtonTextSize ?? 11}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuButtonTextSize: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Button font
+                            <select
+                              className={formInput}
+                              value={globals.menuButtonFont ?? ""}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuButtonFont: event.target.value as GlobalSettings["bodyFont"],
+                                })
+                              }
+                            >
+                              {sortedFontOptions.map((font) => (
+                                <option key={font.value} value={font.value}>
+                                  {font.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Button colors
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                className={formInput}
+                                type="color"
+                                value={globals.menuButtonTextColor ?? "#1c1917"}
+                                onChange={(event) =>
+                                  setGlobals({
+                                    ...globals,
+                                    menuButtonTextColor: event.target.value,
+                                  })
+                                }
+                              />
+                              <input
+                                className={formInput}
+                                type="color"
+                                value={globals.menuButtonBorderColor ?? "#d6d3d1"}
+                                onChange={(event) =>
+                                  setGlobals({
+                                    ...globals,
+                                    menuButtonBorderColor: event.target.value,
+                                  })
+                                }
+                              />
+                              <input
+                                className={formInput}
+                                type="text"
+                                placeholder="Button background rgba(...)"
+                                value={globals.menuButtonBg ?? "rgba(255,255,255,0.25)"}
+                                onChange={(event) =>
+                                  setGlobals({
+                                    ...globals,
+                                    menuButtonBg: event.target.value,
+                                  })
+                                }
+                              />
+                            </div>
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Menu item font
+                            <select
+                              className={formInput}
+                              value={globals.menuItemFont ?? ""}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuItemFont: event.target.value as GlobalSettings["bodyFont"],
+                                })
+                              }
+                            >
+                              {sortedFontOptions.map((font) => (
+                                <option key={font.value} value={font.value}>
+                                  {font.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Menu item size
+                            <input
+                              className={formInput}
+                              type="number"
+                              min={12}
+                              max={36}
+                              value={globals.menuItemSize ?? 18}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuItemSize: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Menu item color
+                            <input
+                              className={formInput}
+                              type="color"
+                              value={globals.menuItemColor ?? "#1c1917"}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuItemColor: event.target.value,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Panel background
+                            <input
+                              className={formInput}
+                              type="color"
+                              value={globals.menuPanelBg ?? "#ffffff"}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuPanelBg: event.target.value,
+                                })
+                              }
+                            />
+                          </label>
+                          <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Menu panel width (%)
+                            <input
+                              className={formInput}
+                              type="number"
+                              min={15}
+                              max={50}
+                              value={globals.menuPanelWidthPct ?? 25}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  menuPanelWidthPct: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
+                        <div className="mt-5">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            Menu items (drag to reorder)
+                          </p>
+                          <div className="mt-3 space-y-2">
+                            {menuItems.map((item) => (
+                              <div
+                                key={item.id}
+                                className="flex flex-wrap items-center gap-2 rounded-2xl border border-stone-200 bg-white px-3 py-2"
+                                draggable
+                                onDragStart={() => setDragMenuId(item.id)}
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={() => {
+                                  if (dragMenuId) moveMenuItem(dragMenuId, item.id);
+                                  setDragMenuId(null);
+                                }}
+                              >
+                                <span className="cursor-grab text-stone-400">⋮⋮</span>
+                                <input
+                                  className="flex-1 rounded-lg border border-stone-200 px-3 py-2 text-xs"
+                                  value={item.label}
+                                  onChange={(event) =>
+                                    updateMenuItems(
+                                      menuItems.map((current) =>
+                                        current.id === item.id
+                                          ? { ...current, label: event.target.value }
+                                          : current
+                                      )
+                                    )
+                                  }
+                                />
+                                <input
+                                  className="flex-[2] rounded-lg border border-stone-200 px-3 py-2 text-xs"
+                                  value={item.href}
+                                  onChange={(event) =>
+                                    updateMenuItems(
+                                      menuItems.map((current) =>
+                                        current.id === item.id
+                                          ? { ...current, href: event.target.value }
+                                          : current
+                                      )
+                                    )
+                                  }
+                                />
+                                <button
+                                  className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold text-stone-600"
+                                  onClick={() =>
+                                    updateMenuItems(
+                                      menuItems.filter((current) => current.id !== item.id)
+                                    )
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            className="mt-3 rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold"
+                            onClick={() =>
+                              updateMenuItems([
+                                ...menuItems,
+                                {
+                                  id: `nav-${Date.now()}`,
+                                  label: "New item",
+                                  href: "#",
+                                },
+                              ])
+                            }
+                          >
+                            Add item
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                       Logo mark
@@ -770,6 +1348,84 @@ export default function AdminClient() {
                       </select>
                     </label>
                   </div>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Body font
+                      <select
+                        className={formInput}
+                        value={globals.bodyFont ?? "sans"}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            bodyFont: event.target.value as typeof globals.bodyFont,
+                          })
+                        }
+                      >
+                        {sortedFontOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Motto font
+                      <select
+                        className={formInput}
+                        value={globals.mottoFont ?? "display"}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            mottoFont: event.target.value as typeof globals.mottoFont,
+                          })
+                        }
+                      >
+                        {sortedFontOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Brand heading font
+                      <select
+                        className={formInput}
+                        value={globals.brandHeadingFont ?? "sans"}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            brandHeadingFont: event.target.value as typeof globals.brandHeadingFont,
+                          })
+                        }
+                      >
+                        {sortedFontOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Brand message font
+                      <select
+                        className={formInput}
+                        value={globals.brandMessageFont ?? "display"}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            brandMessageFont: event.target.value as typeof globals.brandMessageFont,
+                          })
+                        }
+                      >
+                        {sortedFontOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                   <div className="mt-2 grid gap-4 sm:grid-cols-3 text-xs text-stone-600">
                     <label className="flex items-center gap-2">
                       <input
@@ -880,32 +1536,270 @@ export default function AdminClient() {
                 </section>
               )}
 
+              {panel === "intro" && (
+                <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Intro animation
+                    </h2>
+                    <button
+                      className="rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold"
+                      onClick={() => setIntroPreviewKey((prev) => prev + 1)}
+                    >
+                      Play intro
+                    </button>
+                  </div>
+                  <label className="mt-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                    <input
+                      type="checkbox"
+                      checked={globals.introEnabled ?? true}
+                      onChange={(event) =>
+                        setGlobals({ ...globals, introEnabled: event.target.checked })
+                      }
+                    />
+                    Intro enabled
+                  </label>
+                  <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                    <div className="space-y-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Background gradient
+                      </p>
+                      {[
+                        { label: "From", key: "introBgFrom" as const },
+                        { label: "Via", key: "introBgVia" as const },
+                        { label: "To", key: "introBgTo" as const },
+                      ].map((row) => (
+                        <div key={row.key} className="flex flex-wrap items-center gap-3">
+                          <span className="text-xs font-semibold text-stone-500">
+                            {row.label}
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {introPalette.map((color) => (
+                              <button
+                                key={`${row.key}-${color}`}
+                                className={`h-6 w-6 rounded-full border ${
+                                  (globals[row.key] ?? "") === color
+                                    ? "border-stone-900 ring-2 ring-stone-900/40"
+                                    : "border-stone-200"
+                                }`}
+                                style={{ backgroundColor: color }}
+                                onClick={() =>
+                                  setGlobals({
+                                    ...globals,
+                                    [row.key]: color,
+                                  })
+                                }
+                                aria-label={`${row.label} color`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Text + wipe colors
+                      </p>
+                      {[
+                        { label: "Text", key: "introTextColor" as const },
+                        { label: "Wipe", key: "introWipeColor" as const },
+                      ].map((row) => (
+                        <div key={row.key} className="flex flex-wrap items-center gap-3">
+                          <span className="text-xs font-semibold text-stone-500">
+                            {row.label}
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {introPalette.map((color) => (
+                              <button
+                                key={`${row.key}-${color}`}
+                                className={`h-6 w-6 rounded-full border ${
+                                  (globals[row.key] ?? "") === color
+                                    ? "border-stone-900 ring-2 ring-stone-900/40"
+                                    : "border-stone-200"
+                                }`}
+                                style={{ backgroundColor: color }}
+                                onClick={() =>
+                                  setGlobals({
+                                    ...globals,
+                                    [row.key]: color,
+                                  })
+                                }
+                                aria-label={`${row.label} color`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Hold (ms)
+                      <input
+                        className={formInput}
+                        type="number"
+                        min={300}
+                        max={8000}
+                        value={globals.introHoldMs ?? 1400}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            introHoldMs: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Wipe (ms)
+                      <input
+                        className={formInput}
+                        type="number"
+                        min={300}
+                        max={8000}
+                        value={globals.introWipeMs ?? 700}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            introWipeMs: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Fade (ms)
+                      <input
+                        className={formInput}
+                        type="number"
+                        min={300}
+                        max={8000}
+                        value={globals.introFadeMs ?? 700}
+                        onChange={(event) =>
+                          setGlobals({
+                            ...globals,
+                            introFadeMs: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                </section>
+              )}
+
               {panel === "inline" && (
                 <section className="space-y-6">
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
-                    Inline view - Home page
-                  </p>
-                  <div className="rounded-[48px] border border-stone-200 bg-gradient-to-br from-amber-50 via-white to-stone-100 p-6 shadow-xl shadow-amber-900/10">
-                    <InlinePreview
-                      content={content}
-                      globals={globals}
-                      onChangeContent={setContent}
-                      onChangeGlobals={setGlobals}
-                      activeEdit={inlineEditTarget}
-                      onSelectEdit={setInlineEditTarget}
-                    />
-                    <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white/80 p-4 text-sm text-stone-600">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-6">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+                        Edit Page
+                      </p>
+                      <select
+                        className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-700 shadow-sm"
+                        value={activePageSlug}
+                        onChange={(event) =>
+                          setActivePageSlug(event.target.value as "home" | "menu")
+                        }
+                      >
+                        {pageOptions.map((page) => (
+                          <option key={page.slug} value={page.slug}>
+                            {page.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {previewMode === "desktop" ? (
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        <button
+                          className="rounded-full border border-stone-900 bg-stone-900 px-4 py-2 text-white"
+                          onClick={() => setPreviewMode("desktop")}
+                        >
+                          Desktop
+                        </button>
+                        <button
+                          className="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700"
+                          onClick={() => setPreviewMode("mobile")}
+                        >
+                          Mobile
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="relative">
+                    {previewMode === "mobile" ? (
+                      <div
+                        data-inline-scroll
+                        className="mx-auto my-6 h-[844px] w-[390px] overflow-y-auto rounded-[36px] border border-stone-200 bg-white/90 shadow-2xl"
+                      >
+                        <HomePageShell
+                          globals={globals}
+                          links={
+                            globals.menuItems?.length
+                              ? globals.menuItems.map((item) => ({
+                                  href: item.href,
+                                  label: item.label,
+                                }))
+                              : [
+                                  { href: "/", label: "Home" },
+                                  { href: "/menu", label: "Menu" },
+                                ]
+                          }
+                        >
+                          <InlinePreview
+                            content={content}
+                            globals={globals}
+                            onChangeContent={setContent}
+                            onChangeGlobals={setGlobals}
+                            activeEdit={inlineEditTarget}
+                            onSelectEdit={setInlineEditTarget}
+                            mode={previewMode}
+                            layout="frame"
+                            showChips={showInlineChips}
+                          />
+                        </HomePageShell>
+                      </div>
+                    ) : (
+                      <div className="my-6 w-full overflow-auto">
+                        <div className="min-w-[1600px]">
+                          <HomePageShell
+                            globals={globals}
+                            links={
+                              globals.menuItems?.length
+                                ? globals.menuItems.map((item) => ({
+                                    href: item.href,
+                                    label: item.label,
+                                  }))
+                                : activePageSlug === "menu"
+                                  ? [
+                                      { href: "/", label: "Home" },
+                                      { href: "/menu", label: "Menu" },
+                                    ]
+                                  : [
+                                      { href: "#brand", label: "Brand" },
+                                      { href: "#media", label: "Media" },
+                                      { href: "#landscape", label: "Atmosphere" },
+                                      { href: "/menu", label: "Menu" },
+                                    ]
+                            }
+                          >
+                            <InlinePreview
+                              content={content}
+                              globals={globals}
+                              onChangeContent={setContent}
+                              onChangeGlobals={setGlobals}
+                              activeEdit={inlineEditTarget}
+                              onSelectEdit={setInlineEditTarget}
+                              mode={previewMode}
+                              layout="viewport"
+                              showChips={showInlineChips}
+                            />
+                          </HomePageShell>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mx-6 rounded-[48px] border border-stone-200 bg-white/80 p-6 shadow-xl shadow-amber-900/10">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white/80 p-4 text-sm text-stone-600">
                       <span>Click the overlay buttons on media to replace or adjust.</span>
                       <div className="flex flex-wrap gap-2">
-                        <button
-                          className="rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold"
-                          onClick={() => {
-                            setContent(defaultContent);
-                            setGlobals(defaultGlobals);
-                          }}
-                        >
-                          Reset to template
-                        </button>
                         <button
                           className="rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold"
                           onClick={() => setShowInlineControls((prev) => !prev)}
@@ -928,10 +1822,111 @@ export default function AdminClient() {
                 </section>
               )}
 
+              {panel === "media" && (
+                <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Media library
+                    </h2>
+                    <button
+                      className="rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold"
+                      onClick={loadMediaLibrary}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="mt-4">
+                    <input
+                      className={formInput}
+                      placeholder="Search media..."
+                      value={mediaSearch}
+                      onChange={(event) => setMediaSearch(event.target.value)}
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {[
+                      ["all", "All"],
+                      ["15m", "Last 15m"],
+                      ["1h", "Last hour"],
+                      ["1d", "Last day"],
+                      ["1w", "Last week"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                          mediaFilter === value
+                            ? "border-amber-300 bg-amber-200 text-stone-900"
+                            : "border-stone-200 text-stone-500"
+                        }`}
+                        onClick={() => setMediaFilter(value as typeof mediaFilter)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {mediaLoading ? (
+                    <p className="mt-4 text-sm text-stone-500">Loading media...</p>
+                  ) : mediaError ? (
+                    <p className="mt-4 text-sm text-red-500">{mediaError}</p>
+                  ) : (
+                    <div className="mt-4 max-h-[70vh] overflow-y-auto rounded-2xl border border-stone-200 bg-stone-50 p-4">
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                        {mediaAssets
+                          .filter((asset) => {
+                            const query = mediaSearch.trim().toLowerCase();
+                            const matchesSearch =
+                              !query ||
+                              asset.name.toLowerCase().includes(query) ||
+                              asset.url.toLowerCase().includes(query);
+                            return matchesSearch && isMediaInRange(asset, mediaFilter);
+                          })
+                          .map((asset) => {
+                            const isVideo = /\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/i.test(
+                              asset.url
+                            );
+                            return (
+                              <div
+                                key={asset.url}
+                                className="rounded-2xl border border-stone-200 bg-white p-3"
+                              >
+                                <div className="h-28 w-full overflow-hidden rounded-xl bg-stone-100">
+                                  {isVideo ? (
+                                    <video
+                                      className="h-full w-full object-cover"
+                                      src={asset.url}
+                                      muted
+                                    />
+                                  ) : (
+                                    <img
+                                      className="h-full w-full object-cover"
+                                      src={asset.url}
+                                      alt=""
+                                    />
+                                  )}
+                                </div>
+                                <p className="mt-2 text-xs text-stone-600">{asset.name}</p>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {panel === "blocks" && (
                 <section className="space-y-6">
                   <div className="rounded-3xl border border-stone-200 bg-white p-5">
-                    <p className="text-sm font-semibold text-stone-900">Blocks</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-stone-900">Blocks</p>
+                      <button
+                        className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold shadow-sm"
+                        onClick={saveDraft}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? "Saving..." : "Save"}
+                      </button>
+                    </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       {content.blocks.map((block, index) => (
                         <button
@@ -1024,6 +2019,7 @@ export default function AdminClient() {
         </div>
       </div>
     </div>
-    </div>
+      </div>
+    </>
   );
 }

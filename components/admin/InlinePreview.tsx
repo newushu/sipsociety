@@ -1,20 +1,10 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ContentBlock, GlobalSettings, PageContent, TextStyle } from "@/lib/content/types";
-import BrandMessageSection from "@/components/blocks/BrandMessageSection";
+import { fontFamilyForKey } from "@/lib/content/fonts";
 import { InlineEditTarget } from "@/components/admin/inlineEditTypes";
-
-const overlayButton =
-  "rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-900 shadow-lg";
-
-const labelTag =
-  "absolute left-4 top-4 z-10 rounded-full bg-white/80 px-3 py-1 text-[10px] italic text-stone-600 shadow-sm";
-
-const chipBase =
-  "rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600 shadow-sm";
-
-const chipActive =
-  "border-stone-900 bg-stone-900 text-white shadow-md";
+import BlockRenderer from "@/components/blocks/BlockRenderer";
 
 type Props = {
   content: PageContent;
@@ -23,69 +13,119 @@ type Props = {
   onChangeGlobals: (globals: GlobalSettings) => void;
   activeEdit: InlineEditTarget | null;
   onSelectEdit: (target: InlineEditTarget) => void;
+  mode?: "desktop" | "mobile";
+  layout?: "viewport" | "frame";
+  showChips?: boolean;
 };
 
-const updateBlock = (blocks: ContentBlock[], index: number, block: ContentBlock) =>
-  blocks.map((item, i) => (i === index ? block : item));
+const chipBase =
+  "rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600 shadow-sm";
 
-const EditableText = ({
-  value,
-  onChange,
-  className,
-  placeholder,
-  style,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  className: string;
-  placeholder?: string;
-  style?: React.CSSProperties;
-}) => (
-  <span
-    className={className}
-    style={style}
-    contentEditable
-    suppressContentEditableWarning
-    onBlur={(event) => onChange(event.currentTarget.textContent || "")}
-    onKeyDown={(event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        (event.target as HTMLElement).blur();
-      }
-    }}
-  >
-    {value || placeholder || ""}
-  </span>
-);
+const chipActive = "border-amber-300 bg-amber-200 text-stone-900 shadow-md";
 
-const styleFrom = (style?: TextStyle) =>
-  style
-    ? {
-        fontSize: `${style.size}px`,
-        fontWeight: style.weight,
-        fontStyle: style.italic ? "italic" : "normal",
-        transform: `translate(${style.x ?? 0}px, ${style.y ?? 0}px)`,
-      }
-    : undefined;
+const overlayBoxBase =
+  "rounded-xl border-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300";
+
+const EDIT_LABELS: Record<string, string> = {
+  heroVideo: "Edit video",
+  heroLogo: "Edit logo",
+  logoText: "Edit logo text",
+  heroTagline: "Edit tagline",
+  brandLogo: "Edit logo",
+  brandHeading: "Edit heading",
+  brandMessage: "Edit message",
+  leftLogo: "Edit logo",
+  leftTitle: "Edit title",
+  leftBody: "Edit body",
+  middleMedia: "Edit media",
+  rightMedia: "Edit media",
+  landscapeMedia: "Edit media",
+  brandTopImage: "Edit image",
+  brandBgVideo: "Edit video",
+  caption: "Edit caption",
+  footerTagline: "Edit footer",
+  footerLead: "Edit lead",
+  brandAnimation: "Edit animation",
+};
+
+type OverlayItem = {
+  id: string;
+  target: InlineEditTarget;
+  label: string;
+  rect: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  };
+};
 
 const isSameTarget = (a: InlineEditTarget, b: InlineEditTarget) =>
   a.kind === b.kind &&
   a.scope === b.scope &&
   (a.blockIndex === undefined || b.blockIndex === undefined || a.blockIndex === b.blockIndex);
 
-const EditChip = ({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) => (
-  <button className={`${chipBase} ${active ? chipActive : ""}`} onClick={onClick}>
-    {label}
-  </button>
-);
+const updateBlock = (blocks: ContentBlock[], index: number, block: ContentBlock) =>
+  blocks.map((item, i) => (i === index ? block : item));
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const ensureTextStyle = (style?: TextStyle): TextStyle => ({
+  size: style?.size ?? 16,
+  weight: style?.weight ?? 500,
+  italic: style?.italic ?? false,
+  x: style?.x ?? 0,
+  y: style?.y ?? 0,
+  font: style?.font,
+});
+
+const mapEditToTarget = (
+  edit: string,
+  blockIndex: number
+): InlineEditTarget | null => {
+  switch (edit) {
+    case "heroVideo":
+      return { kind: "media", scope: "heroVideo", blockIndex };
+    case "heroLogo":
+      return { kind: "logo", scope: "hero", blockIndex };
+    case "logoText":
+      return { kind: "text", scope: "logoText", blockIndex };
+    case "heroTagline":
+      return { kind: "text", scope: "tagline", blockIndex };
+    case "brandLogo":
+      return { kind: "logo", scope: "brand", blockIndex };
+    case "brandHeading":
+      return { kind: "text", scope: "brandHeading", blockIndex };
+    case "brandMessage":
+      return { kind: "text", scope: "brandMessage", blockIndex };
+    case "leftLogo":
+      return { kind: "logo", scope: "left", blockIndex };
+    case "leftTitle":
+      return { kind: "text", scope: "leftTitle", blockIndex };
+    case "leftBody":
+      return { kind: "text", scope: "leftBody", blockIndex };
+    case "middleMedia":
+      return { kind: "media", scope: "middleMedia", blockIndex };
+    case "rightMedia":
+      return { kind: "media", scope: "rightMedia", blockIndex };
+    case "landscapeMedia":
+      return { kind: "media", scope: "landscapeMedia", blockIndex };
+    case "brandTopImage":
+      return { kind: "media", scope: "brandTopImage", blockIndex };
+    case "brandBgVideo":
+      return { kind: "media", scope: "brandBgVideo", blockIndex };
+    case "brandAnimation":
+      return { kind: "animation", scope: "brandAnimation", blockIndex };
+    case "caption":
+      return { kind: "text", scope: "caption", blockIndex };
+    case "footerTagline":
+      return { kind: "text", scope: "footerTagline", blockIndex };
+    case "footerLead":
+      return { kind: "text", scope: "footerLead", blockIndex };
+    default:
+      return null;
+  }
+};
 
 export default function InlinePreview({
   content,
@@ -94,487 +134,416 @@ export default function InlinePreview({
   onChangeGlobals,
   activeEdit,
   onSelectEdit,
+  showChips = true,
 }: Props) {
-  const logoMark = globals.logoMark ?? "SS";
-  const logoText = globals.logoText ?? "Sip Society";
-  const logoImage = globals.logoImageUrl ?? "";
-  const showLogoImage = Boolean(logoImage);
-  const borderEnabled = globals.borderEnabled ?? true;
-  const borderColor = globals.borderColor ?? "#e7e2d9";
-  const borderWidth = globals.borderWidth ?? 1;
-  const isActive = (target: InlineEditTarget) =>
-    activeEdit ? isSameTarget(activeEdit, target) : false;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [overlays, setOverlays] = useState<OverlayItem[]>([]);
+  const [chipOffsets, setChipOffsets] = useState<Record<string, { x: number; y: number }>>({});
+  const chipDragRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    baseX: number;
+    baseY: number;
+  } | null>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const dragRef = useRef<{
+    kind: "logo" | "text";
+    scope: "hero" | "brand" | "left" | InlineEditTarget["scope"];
+    blockIndex: number;
+    startX: number;
+    startY: number;
+    startValueX: number;
+    startValue: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      if (!dragRef.current) return;
+      const { kind, scope, blockIndex, startX, startY, startValueX, startValue } =
+        dragRef.current;
+      const deltaY = (event.clientY - startY) / 2;
+      const deltaX = (event.clientX - startX) / 2;
+      const block = content.blocks[blockIndex];
+      if (kind === "logo") {
+        const nextX = clamp(startValueX + deltaX, -100, 100);
+        const nextY = clamp(startValue + deltaY, -100, 100);
+        if (!block) return;
+        if (scope === "left" && block.type === "triple-media") {
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, leftLogoX: nextX, leftLogoY: nextY },
+            }),
+          });
+        }
+        if (scope === "hero" && block.type === "hero") {
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, logoX: nextX, logoY: nextY },
+            }),
+          });
+        }
+        if (scope === "brand" && block.type === "brand-message") {
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, logoX: nextX, logoY: nextY },
+            }),
+          });
+        }
+      }
+      if (kind === "text") {
+        const nextX = startValueX;
+        const nextY = clamp(startValue + deltaY, -400, 400);
+        if (!block) return;
+        const scopeKey = scope as InlineEditTarget["scope"];
+        if (scopeKey === "logoText") {
+          const base = ensureTextStyle(globals.logoTextStyle);
+          onChangeGlobals({
+            ...globals,
+            logoTextStyle: { ...base, x: nextX, y: nextY },
+          });
+        }
+        if (scopeKey === "tagline" && block.type === "hero") {
+          const base = ensureTextStyle(block.data.taglineStyle);
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, taglineStyle: { ...base, x: nextX, y: nextY } },
+            }),
+          });
+        }
+        if (scopeKey === "brandHeading" && block.type === "brand-message") {
+          const base = ensureTextStyle(block.data.headingStyle);
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, headingStyle: { ...base, x: nextX, y: nextY } },
+            }),
+          });
+        }
+        if (scopeKey === "brandMessage" && block.type === "brand-message") {
+          const base = ensureTextStyle(globals.brandMessageStyle ?? block.data.messageStyle);
+          onChangeGlobals({
+            ...globals,
+            brandMessageStyle: { ...base, x: nextX, y: nextY },
+          });
+        }
+        if (scopeKey === "leftTitle" && block.type === "triple-media") {
+          const base = ensureTextStyle(block.data.leftTitleStyle);
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, leftTitleStyle: { ...base, x: nextX, y: nextY } },
+            }),
+          });
+        }
+        if (scopeKey === "leftBody" && block.type === "triple-media") {
+          const base = ensureTextStyle(block.data.leftBodyStyle);
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, leftBodyStyle: { ...base, x: nextX, y: nextY } },
+            }),
+          });
+        }
+        if (scopeKey === "caption" && block.type === "landscape") {
+          const base = ensureTextStyle(block.data.captionStyle);
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, captionStyle: { ...base, x: nextX, y: nextY } },
+            }),
+          });
+        }
+        if (scopeKey === "footerTagline" && block.type === "footer") {
+          const base = ensureTextStyle(block.data.taglineStyle);
+          onChangeContent({
+            ...content,
+            blocks: updateBlock(content.blocks, blockIndex, {
+              ...block,
+              data: { ...block.data, taglineStyle: { ...base, x: nextX, y: nextY } },
+            }),
+          });
+        }
+      }
+    };
+    const handleUp = () => {
+      dragRef.current = null;
+      chipDragRef.current = null;
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [content, globals, onChangeContent, onChangeGlobals]);
+
+  useEffect(() => {
+    const handleMove = (event: PointerEvent) => {
+      if (!chipDragRef.current) return;
+      const { id, startX, startY, baseX, baseY } = chipDragRef.current;
+      const next = {
+        x: baseX + (event.clientX - startX),
+        y: baseY + (event.clientY - startY),
+      };
+      setChipOffsets((prev) => ({ ...prev, [id]: next }));
+    };
+    const handleUp = () => {
+      chipDragRef.current = null;
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, []);
+
+  const beginDrag = (
+    event: React.PointerEvent,
+    scope: "hero" | "brand" | "left",
+    blockIndex: number,
+    currentX: number,
+    currentY: number
+  ) => {
+    event.preventDefault();
+    dragRef.current = {
+      kind: "logo",
+      scope,
+      blockIndex,
+      startX: event.clientX,
+      startY: event.clientY,
+      startValueX: currentX,
+      startValue: currentY,
+    };
+  };
+
+    const getLogoPosition = useCallback(
+    (target: InlineEditTarget) => {
+      if (target.kind !== "logo") return null;
+      const block = content.blocks[target.blockIndex];
+      if (!block) return null;
+      if (target.scope === "hero" && block.type === "hero")
+        return { x: block.data.logoX ?? 0, y: block.data.logoY ?? 0 };
+      if (target.scope === "brand" && block.type === "brand-message")
+        return { x: block.data.logoX ?? 0, y: block.data.logoY ?? 0 };
+      if (target.scope === "left" && block.type === "triple-media")
+        return { x: block.data.leftLogoX ?? 0, y: block.data.leftLogoY ?? 0 };
+      return null;
+    },
+    [content.blocks]
+  );
+
+  const getTextPosition = useCallback(
+    (target: InlineEditTarget) => {
+      if (target.kind !== "text") return null;
+      const block = target.blockIndex !== undefined ? content.blocks[target.blockIndex] : null;
+      const scope = target.scope;
+      if (scope === "logoText") {
+        const style = ensureTextStyle(globals.logoTextStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "tagline" && block?.type === "hero") {
+        const style = ensureTextStyle(block.data.taglineStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "brandHeading" && block?.type === "brand-message") {
+        const style = ensureTextStyle(block.data.headingStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "brandMessage" && block?.type === "brand-message") {
+        const style = ensureTextStyle(globals.brandMessageStyle ?? block.data.messageStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "leftTitle" && block?.type === "triple-media") {
+        const style = ensureTextStyle(block.data.leftTitleStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "leftBody" && block?.type === "triple-media") {
+        const style = ensureTextStyle(block.data.leftBodyStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "caption" && block?.type === "landscape") {
+        const style = ensureTextStyle(block.data.captionStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "footerTagline" && block?.type === "footer") {
+        const style = ensureTextStyle(block.data.taglineStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      if (scope === "footerLead" && block?.type === "footer") {
+        const style = ensureTextStyle(block.data.leadStyle);
+        return { x: style.x ?? 0, y: style.y ?? 0 };
+      }
+      return null;
+    },
+    [content.blocks, globals]
+  );
+
+  const updateOverlays = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const nodes = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-edit][data-block-index]")
+    );
+    const next: OverlayItem[] = [];
+    nodes.forEach((node, idx) => {
+      const edit = node.dataset.edit;
+      const blockIndex = Number(node.dataset.blockIndex);
+      if (!edit || Number.isNaN(blockIndex)) return;
+      const target = mapEditToTarget(edit, blockIndex);
+      if (!target) return;
+      const rect = node.getBoundingClientRect();
+      const top = rect.top - containerRect.top;
+      const left = rect.left - containerRect.left;
+      if (rect.width === 0 || rect.height === 0) return;
+      next.push({
+        id: `${edit}-${blockIndex}-${idx}`,
+        target,
+        label: EDIT_LABELS[edit] ?? "Edit",
+        rect: {
+          top,
+          left,
+          width: rect.width,
+          height: rect.height,
+        },
+      });
+    });
+    setOverlays(next);
+  }, [content.blocks, globals]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => updateOverlays());
+    return () => cancelAnimationFrame(frame);
+  }, [updateOverlays, content, globals]);
+
+  useEffect(() => {
+    const handle = () => updateOverlays();
+    window.addEventListener("resize", handle);
+    window.addEventListener("scroll", handle, true);
+    const container = containerRef.current;
+    const scrollParent = container?.closest("[data-inline-scroll]");
+    scrollParent?.addEventListener("scroll", handle);
+    return () => {
+      window.removeEventListener("resize", handle);
+      window.removeEventListener("scroll", handle, true);
+      scrollParent?.removeEventListener("scroll", handle);
+    };
+  }, [updateOverlays]);
+
+  const overlayNodes = showChips
+    ? overlays.map((overlay) => {
+        const active = activeEdit ? isSameTarget(activeEdit, overlay.target) : false;
+        const hovered = hoverId === overlay.id;
+        const highlightClass = `${overlayBoxBase} ${
+          active || hovered ? "border-amber-300" : "border-transparent"
+        }`;
+        const offset = chipOffsets[overlay.id] ?? { x: 0, y: 0 };
+        return (
+          <div key={overlay.id}>
+            <button
+              type="button"
+              className={`${highlightClass} absolute`}
+              style={{
+                top: overlay.rect.top,
+                left: overlay.rect.left,
+                width: overlay.rect.width,
+                height: overlay.rect.height,
+                touchAction: "none",
+              }}
+              onPointerEnter={() => setHoverId(overlay.id)}
+              onPointerLeave={() => setHoverId((prev) => (prev === overlay.id ? null : prev))}
+              onClick={() => onSelectEdit(overlay.target)}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (overlay.target.kind === "logo") {
+                  const pos = getLogoPosition(overlay.target);
+                  if (!pos) return;
+                  beginDrag(
+                    event,
+                    overlay.target.scope,
+                    overlay.target.blockIndex,
+                    pos.x,
+                    pos.y
+                  );
+                }
+                if (overlay.target.kind === "text") {
+                  const position = getTextPosition(overlay.target);
+                  if (!position) return;
+                  dragRef.current = {
+                    kind: "text",
+                    scope: overlay.target.scope,
+                    blockIndex: overlay.target.blockIndex ?? 0,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    startValueX: position.x,
+                    startValue: position.y,
+                  };
+                }
+              }}
+            >
+              <span className="sr-only">{overlay.label}</span>
+            </button>
+            <div
+              className="absolute"
+              style={{
+                top: overlay.rect.top - 34 + offset.y,
+                left: overlay.rect.left + overlay.rect.width / 2 + offset.x,
+                transform: "translateX(-50%)",
+              }}
+            >
+              <button
+                type="button"
+                className={`${chipBase} ${active ? chipActive : ""}`}
+                onPointerEnter={() => setHoverId(overlay.id)}
+                onPointerLeave={() =>
+                  setHoverId((prev) => (prev === overlay.id ? null : prev))
+                }
+                onClick={() => onSelectEdit(overlay.target)}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  const current = chipOffsets[overlay.id] ?? { x: 0, y: 0 };
+                  chipDragRef.current = {
+                    id: overlay.id,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    baseX: current.x,
+                    baseY: current.y,
+                  };
+                }}
+              >
+                {overlay.label}
+              </button>
+            </div>
+          </div>
+        );
+      })
+    : null;
 
   return (
-    <div className="space-y-28">
-      {content.blocks.map((block, index) => {
-        if (block.type === "hero") {
-          return (
-            <section
-              key={block.id}
-              className="relative overflow-hidden rounded-[48px] border border-stone-200 bg-stone-900 text-white shadow-2xl shadow-stone-900/30"
-              style={{
-                borderColor: borderEnabled ? borderColor : "transparent",
-                borderWidth: borderEnabled ? borderWidth : 0,
-              }}
-            >
-              <div className="absolute right-4 top-4 z-20 flex flex-col gap-2">
-                <EditChip
-                  label="Edit logo"
-                  active={isActive({ kind: "logo", scope: "hero", blockIndex: index })}
-                  onClick={() =>
-                    onSelectEdit({ kind: "logo", scope: "hero", blockIndex: index })
-                  }
-                />
-                <EditChip
-                  label="Edit video"
-                  active={isActive({ kind: "media", scope: "heroVideo", blockIndex: index })}
-                  onClick={() =>
-                    onSelectEdit({ kind: "media", scope: "heroVideo", blockIndex: index })
-                  }
-                />
-              </div>
-              <span className={labelTag}>Hero (video)</span>
-              <div className="absolute inset-0">
-                <video
-                  className="h-full w-full object-cover video-fade-loop"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  src={block.data.videoUrl}
-                  style={{
-                    objectPosition: `${block.data.videoX ?? 50}% ${block.data.videoY ?? 50}%`,
-                    transform: `scale(${block.data.videoScale ?? 1})`,
-                    filter: `grayscale(${block.data.videoDesaturate ?? 0.6})`,
-                  }}
-                />
-                <div
-                  className="absolute inset-0 bg-black"
-                  style={{ opacity: block.data.overlayOpacity }}
-                />
-              </div>
-              <div className="relative z-10 flex min-h-[120vh] flex-col items-center justify-center gap-6 px-8 py-20 text-center sm:min-h-[140vh] sm:px-16 lg:min-h-[160vh]">
-                <div className="relative inline-flex flex-col items-center">
-                  <div className="absolute right-0 -top-10 z-20">
-                    <EditChip
-                      label="Edit logo text"
-                      active={isActive({ kind: "text", scope: "logoText", blockIndex: index })}
-                      onClick={() =>
-                        onSelectEdit({ kind: "text", scope: "logoText", blockIndex: index })
-                      }
-                    />
-                  </div>
-                  <p
-                    className="text-xs font-semibold uppercase tracking-[0.5em] text-amber-200/80"
-                    style={styleFrom(globals.logoTextStyle)}
-                  >
-                    {logoText}
-                  </p>
-                </div>
-                <div
-                  className="flex h-24 w-24 items-center justify-center rounded-full border border-amber-100/40 bg-white/10 text-2xl font-semibold"
-                  style={{ transform: `scale(${block.data.logoBoxScale ?? 1})` }}
-                >
-                  {showLogoImage ? (
-                    <img
-                      src={logoImage}
-                      alt={`${logoText} logo`}
-                      className="h-20 w-20 rounded-full object-cover"
-                      style={{
-                        transform: `translate(${block.data.logoX ?? 0}%, ${block.data.logoY ?? 0}%) scale(${block.data.logoScale ?? 1})`,
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        transform: `translate(${block.data.logoX ?? 0}%, ${block.data.logoY ?? 0}%) scale(${block.data.logoScale ?? 1})`,
-                      }}
-                    >
-                      {logoMark}
-                    </span>
-                  )}
-                </div>
-                <div className="relative inline-flex flex-col items-center">
-                  <div className="absolute right-0 -top-10 z-20">
-                    <EditChip
-                      label="Edit hero text"
-                      active={isActive({ kind: "text", scope: "tagline", blockIndex: index })}
-                      onClick={() =>
-                        onSelectEdit({ kind: "text", scope: "tagline", blockIndex: index })
-                      }
-                    />
-                  </div>
-                  <EditableText
-                    className="max-w-2xl text-3xl font-semibold sm:text-5xl"
-                    value={block.data.tagline}
-                    placeholder="Hero tagline"
-                    style={styleFrom(block.data.taglineStyle)}
-                    onChange={(next) =>
-                      onChangeContent({
-                        ...content,
-                        blocks: updateBlock(content.blocks, index, {
-                          ...block,
-                          data: { ...block.data, tagline: next },
-                        }),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-            </section>
-          );
-        }
-
-        if (block.type === "brand-message") {
-          return (
-            <section key={block.id} className="relative">
-              <span className={labelTag}>Brand message</span>
-              <div className="absolute right-4 top-4 z-20 flex flex-col gap-2">
-                <EditChip
-                  label="Edit logo"
-                  active={isActive({ kind: "logo", scope: "brand", blockIndex: index })}
-                  onClick={() =>
-                    onSelectEdit({ kind: "logo", scope: "brand", blockIndex: index })
-                  }
-                />
-              </div>
-              <BrandMessageSection
-                block={block}
-                id="brand"
-                logo={{
-                  mark: logoMark,
-                  text: logoText,
-                  imageUrl: logoImage,
-                  scale: block.data.logoScale ?? 1,
-                  boxScale: block.data.logoBoxScale ?? 1,
-                  x: block.data.logoX ?? 0,
-                  y: block.data.logoY ?? 0,
-                }}
-                border={{ enabled: borderEnabled, color: borderColor, width: borderWidth }}
-                messageOverride={globals.brandMessage ?? block.data.message}
-                headingStyle={styleFrom(block.data.headingStyle)}
-                messageStyle={styleFrom(globals.brandMessageStyle ?? block.data.messageStyle)}
-                headingControls={
-                  <EditChip
-                    label="Edit heading"
-                    active={isActive({ kind: "text", scope: "brandHeading", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "text", scope: "brandHeading", blockIndex: index })
-                    }
-                  />
-                }
-                messageControls={
-                  <EditChip
-                    label="Edit message"
-                    active={isActive({ kind: "text", scope: "brandMessage", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "text", scope: "brandMessage", blockIndex: index })
-                    }
-                  />
-                }
-                onHeadingChange={(next) =>
-                  onChangeContent({
-                    ...content,
-                    blocks: updateBlock(content.blocks, index, {
-                      ...block,
-                      data: { ...block.data, heading: next },
-                    }),
-                  })
-                }
-                onMessageChange={(next) => {
-                  onChangeGlobals({ ...globals, brandMessage: next });
-                  onChangeContent({
-                    ...content,
-                    blocks: updateBlock(content.blocks, index, {
-                      ...block,
-                      data: { ...block.data, message: next },
-                    }),
-                  });
-                }}
-              />
-            </section>
-          );
-        }
-
-        if (block.type === "triple-media") {
-          return (
-            <section key={block.id} id="media" className="grid gap-6 lg:grid-cols-[1fr_1fr_1fr]">
-              <div
-                className="relative flex h-[60vh] flex-col items-center justify-center rounded-[36px] border border-stone-200 p-10 text-center text-white shadow-xl sm:h-[70vh] lg:h-[80vh]"
-                style={{
-                  backgroundColor: block.data.leftAccent,
-                  borderColor: borderEnabled ? borderColor : "transparent",
-                  borderWidth: borderEnabled ? borderWidth : 0,
-                }}
-              >
-                <span className={labelTag}>Media left (color box)</span>
-                <div className="absolute right-4 top-4 z-20 flex flex-col gap-2">
-                  <EditChip
-                    label="Edit logo"
-                    active={isActive({ kind: "logo", scope: "left", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "logo", scope: "left", blockIndex: index })
-                    }
-                  />
-                  <label className={`${overlayButton} flex items-center gap-2`}>
-                    Color
-                    <input
-                      type="color"
-                      value={block.data.leftAccent}
-                      onChange={(event) =>
-                        onChangeContent({
-                          ...content,
-                          blocks: updateBlock(content.blocks, index, {
-                            ...block,
-                            data: { ...block.data, leftAccent: event.target.value },
-                          }),
-                        })
-                      }
-                      className="h-5 w-5 cursor-pointer rounded-full border-0 bg-transparent"
-                    />
-                  </label>
-                </div>
-                <div
-                  className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-white/40 bg-white/10 text-sm font-semibold"
-                  style={{ transform: `scale(${block.data.leftLogoBoxScale ?? 1})` }}
-                >
-                  {showLogoImage ? (
-                    <img
-                      src={logoImage}
-                      alt={`${logoText} logo`}
-                      className="h-12 w-12 rounded-full object-cover"
-                      style={{
-                        transform: `translate(${block.data.leftLogoX ?? 0}%, ${block.data.leftLogoY ?? 0}%) scale(${block.data.leftLogoScale ?? 1})`,
-                      }}
-                    />
-                  ) : (
-                    <span
-                      style={{
-                        transform: `translate(${block.data.leftLogoX ?? 0}%, ${block.data.leftLogoY ?? 0}%) scale(${block.data.leftLogoScale ?? 1})`,
-                      }}
-                    >
-                      {logoMark}
-                    </span>
-                  )}
-                </div>
-                <div className="relative inline-flex flex-col items-center">
-                  <div className="absolute right-0 -top-10 z-20">
-                    <EditChip
-                      label="Edit left title"
-                      active={isActive({ kind: "text", scope: "leftTitle", blockIndex: index })}
-                      onClick={() =>
-                        onSelectEdit({ kind: "text", scope: "leftTitle", blockIndex: index })
-                      }
-                    />
-                  </div>
-                  <EditableText
-                    className="text-3xl font-semibold"
-                    value={block.data.leftTitle}
-                    placeholder="Left title"
-                    style={styleFrom(block.data.leftTitleStyle)}
-                    onChange={(next) =>
-                      onChangeContent({
-                        ...content,
-                        blocks: updateBlock(content.blocks, index, {
-                          ...block,
-                          data: { ...block.data, leftTitle: next },
-                        }),
-                      })
-                    }
-                  />
-                </div>
-                <div className="relative mt-4 inline-flex flex-col items-center">
-                  <div className="absolute right-0 -top-10 z-20">
-                    <EditChip
-                      label="Edit left body"
-                      active={isActive({ kind: "text", scope: "leftBody", blockIndex: index })}
-                      onClick={() =>
-                        onSelectEdit({ kind: "text", scope: "leftBody", blockIndex: index })
-                      }
-                    />
-                  </div>
-                  <EditableText
-                    className="text-base text-white/80"
-                    value={block.data.leftBody}
-                    placeholder="Left body"
-                    style={styleFrom(block.data.leftBodyStyle)}
-                    onChange={(next) =>
-                      onChangeContent({
-                        ...content,
-                        blocks: updateBlock(content.blocks, index, {
-                          ...block,
-                          data: { ...block.data, leftBody: next },
-                        }),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <div
-                className="relative h-[60vh] overflow-hidden rounded-[36px] border border-stone-200 bg-stone-100 sm:h-[70vh] lg:h-[80vh]"
-                style={{
-                  borderColor: borderEnabled ? borderColor : "transparent",
-                  borderWidth: borderEnabled ? borderWidth : 0,
-                }}
-              >
-                <span className={labelTag}>Media middle (image)</span>
-                <img
-                  src={block.data.middleMedia.url}
-                  alt={block.data.middleMedia.alt}
-                  className="h-full w-full object-cover"
-                  style={{
-                    objectPosition: `${block.data.middleMedia.x}% ${block.data.middleMedia.y}%`,
-                    transform: `scale(${block.data.middleMedia.scale})`,
-                  }}
-                />
-                <div className="absolute right-4 top-4 z-20">
-                  <EditChip
-                    label="Edit photo"
-                    active={isActive({ kind: "media", scope: "middleMedia", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "media", scope: "middleMedia", blockIndex: index })
-                    }
-                  />
-                </div>
-              </div>
-              <div
-                className="relative h-[60vh] overflow-hidden rounded-[36px] border border-stone-200 bg-stone-900 sm:h-[70vh] lg:h-[80vh]"
-                style={{
-                  borderColor: borderEnabled ? borderColor : "transparent",
-                  borderWidth: borderEnabled ? borderWidth : 0,
-                }}
-              >
-                <span className={labelTag}>Media right (video)</span>
-                <video
-                  className="h-full w-full object-cover video-fade-loop"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  src={block.data.rightMedia.url}
-                  style={{
-                    objectPosition: `${block.data.rightMedia.x}% ${block.data.rightMedia.y}%`,
-                    transform: `scale(${block.data.rightMedia.scale})`,
-                  }}
-                />
-                <div className="absolute right-4 top-4 z-20">
-                  <EditChip
-                    label="Edit video"
-                    active={isActive({ kind: "media", scope: "rightMedia", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "media", scope: "rightMedia", blockIndex: index })
-                    }
-                  />
-                </div>
-              </div>
-            </section>
-          );
-        }
-
-        if (block.type === "landscape") {
-          return (
-            <section
-              key={block.id}
-              id="landscape"
-              className="relative overflow-hidden rounded-[48px] border border-stone-200 bg-stone-100"
-              style={{
-                borderColor: borderEnabled ? borderColor : "transparent",
-                borderWidth: borderEnabled ? borderWidth : 0,
-              }}
-            >
-              <span className={labelTag}>Landscape image</span>
-              <div className="relative h-[48vh] w-full overflow-hidden">
-                <img
-                  src={block.data.media.url}
-                  alt={block.data.media.alt}
-                  className="h-full w-full object-cover"
-                  style={{
-                    objectPosition: `${block.data.media.x}% ${block.data.media.y}%`,
-                    transform: `scale(${block.data.media.scale})`,
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-                <div className="absolute bottom-8 left-8 text-lg font-semibold text-white">
-                  <div className="relative inline-flex flex-col items-start">
-                    <div className="absolute right-0 -top-10 z-20">
-                      <EditChip
-                        label="Edit caption"
-                        active={isActive({ kind: "text", scope: "caption", blockIndex: index })}
-                        onClick={() =>
-                          onSelectEdit({ kind: "text", scope: "caption", blockIndex: index })
-                        }
-                      />
-                    </div>
-                    <EditableText
-                      className="text-lg font-semibold text-white"
-                      value={block.data.caption}
-                      placeholder="Landscape caption"
-                      style={styleFrom(block.data.captionStyle)}
-                      onChange={(next) =>
-                        onChangeContent({
-                          ...content,
-                          blocks: updateBlock(content.blocks, index, {
-                            ...block,
-                            data: { ...block.data, caption: next },
-                          }),
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="absolute right-4 top-4 z-20">
-                  <EditChip
-                    label="Edit image"
-                    active={isActive({ kind: "media", scope: "landscapeMedia", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "media", scope: "landscapeMedia", blockIndex: index })
-                    }
-                  />
-                </div>
-              </div>
-            </section>
-          );
-        }
-
-        if (block.type === "footer") {
-          return (
-            <footer key={block.id} className="border-t border-stone-200 pt-6 text-sm text-stone-500">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="font-semibold text-stone-900">Sip Society</p>
-              </div>
-              <div className="relative mt-2 inline-flex flex-col items-start">
-                <div className="absolute right-0 -top-10 z-20">
-                  <EditChip
-                    label="Edit footer text"
-                    active={isActive({ kind: "text", scope: "footerTagline", blockIndex: index })}
-                    onClick={() =>
-                      onSelectEdit({ kind: "text", scope: "footerTagline", blockIndex: index })
-                    }
-                  />
-                </div>
-                <EditableText
-                  className="text-sm text-stone-500"
-                  value={block.data.tagline}
-                  placeholder="Footer tagline"
-                  style={styleFrom(block.data.taglineStyle)}
-                  onChange={(next) =>
-                    onChangeContent({
-                      ...content,
-                      blocks: updateBlock(content.blocks, index, {
-                        ...block,
-                        data: { ...block.data, tagline: next },
-                      }),
-                    })
-                  }
-                />
-              </div>
-            </footer>
-          );
-        }
-
-        return null;
-      })}
+    <div
+      ref={containerRef}
+      className="relative"
+      style={{ fontFamily: fontFamilyForKey(globals.bodyFont) }}
+    >
+      <BlockRenderer blocks={content.blocks} globals={globals} />
+      <div className="pointer-events-none absolute inset-0 z-40">
+        <div className="pointer-events-auto">{overlayNodes}</div>
+      </div>
     </div>
   );
 }

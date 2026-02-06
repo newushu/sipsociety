@@ -6,7 +6,13 @@ export type InlineEditTarget =
     }
   | {
       kind: "media";
-      scope: "heroVideo" | "middleMedia" | "rightMedia" | "landscapeMedia";
+      scope:
+        | "heroVideo"
+        | "middleMedia"
+        | "rightMedia"
+        | "landscapeMedia"
+        | "brandTopImage"
+        | "brandBgVideo";
       blockIndex: number;
     }
   | {
@@ -19,6 +25,12 @@ export type InlineEditTarget =
         | "leftTitle"
         | "leftBody"
         | "caption"
-        | "footerTagline";
+        | "footerTagline"
+        | "footerLead";
       blockIndex?: number;
+    }
+  | {
+      kind: "animation";
+      scope: "brandAnimation";
+      blockIndex: number;
     };
