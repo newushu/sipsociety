@@ -485,6 +485,16 @@ export default function BlockEditor({ block, index, onChange, onRemove, onMove }
                 />
               </label>
               <label className="text-xs text-stone-500">
+                Join label
+                <input
+                  className={inputClass}
+                  value={block.data.joinLabel ?? ""}
+                  onChange={(event) =>
+                    setData({ ...block.data, joinLabel: event.target.value })
+                  }
+                />
+              </label>
+              <label className="text-xs text-stone-500">
                 Placeholder
                 <input
                   className={inputClass}

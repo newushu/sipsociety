@@ -37,6 +37,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
       next.fontWeight = style.weight;
       next.fontStyle = style.italic ? "italic" : "normal";
       next.transform = `translate(${style.x ?? 0}px, ${style.y ?? 0}px)`;
+      if (style.color) next.color = style.color;
     }
     const resolvedFont = style?.font ?? fontKey;
     if (resolvedFont) {
@@ -81,6 +82,42 @@ export default function BlockRenderer({ blocks, globals }: Props) {
     borderTargets.forEach((node) => observer.observe(node));
     return () => observer.disconnect();
   }, [blocks]);
+
+  useEffect(() => {
+    const videos = Array.from(
+      document.querySelectorAll<HTMLVideoElement>("video[data-autoplay]")
+    );
+    if (!videos.length) return;
+    const tryPlay = () => {
+      videos.forEach((video) => {
+        if (!video.paused) return;
+        const promise = video.play();
+        if (promise && typeof promise.catch === "function") {
+          promise.catch(() => {});
+        }
+      });
+    };
+    tryPlay();
+    const handleInteract = () => tryPlay();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tryPlay();
+      }
+    };
+    const handlePageShow = () => {
+      tryPlay();
+    };
+    window.addEventListener("touchstart", handleInteract, { passive: true });
+    window.addEventListener("click", handleInteract);
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      window.removeEventListener("touchstart", handleInteract);
+      window.removeEventListener("click", handleInteract);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [blocks]);
   return (
     <div className="space-y-28">
       {blocks.map((block, index) => {
@@ -103,11 +140,27 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                           className="h-full w-full object-cover video-fade-loop"
                           data-edit="heroVideo"
                           data-block-index={index}
+                          data-autoplay="true"
                           autoPlay
                           muted
                           loop
                           playsInline
+                          preload="auto"
+                          controls={false}
                           src={block.data.videoUrl}
+                          onClick={(event) => {
+                            const video = event.currentTarget;
+                            video.muted = true;
+                            video.play().catch(() => {});
+                          }}
+                          onLoadedData={(event) => {
+                            const video = event.currentTarget;
+                            video.muted = true;
+                            const playPromise = video.play();
+                            if (playPromise && typeof playPromise.catch === "function") {
+                              playPromise.catch(() => {});
+                            }
+                          }}
                           style={{
                             objectPosition: `${block.data.videoX ?? 50}% ${block.data.videoY ?? 50}%`,
                             transform: `scale(${block.data.videoScale ?? 1})`,
@@ -115,7 +168,25 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                           }}
                         />
                       )
-                    : null}
+                    : block.data.imageUrl
+                      ? wrapLink(
+                          block.data.videoLinkEnabled,
+                          block.data.videoLinkUrl,
+                          <img
+                            className="h-full w-full object-cover"
+                            data-edit="heroImage"
+                            data-block-index={index}
+                            src={block.data.imageUrl}
+                            alt=""
+                            style={{
+                              objectPosition: `${block.data.imageX ?? block.data.videoX ?? 50}% ${
+                                block.data.imageY ?? block.data.videoY ?? 50
+                              }%`,
+                              transform: `scale(${block.data.imageScale ?? block.data.videoScale ?? 1})`,
+                            }}
+                          />
+                        )
+                      : null}
                   <div
                     className="absolute inset-0 bg-black"
                     style={{ opacity: block.data.overlayOpacity }}
@@ -137,39 +208,50 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     )
                   ) : null}
                   {showLogoMark ? (
-                    wrapLink(
-                      block.data.logoLinkEnabled,
-                      block.data.logoLinkUrl,
-                      <div
-                        data-edit="heroLogo"
-                        data-block-index={index}
-                        className={`flex h-20 w-20 items-center justify-center text-2xl font-semibold ${
-                          showLogoBox
-                            ? "rounded-3xl border border-amber-100/40 bg-white/10"
-                            : ""
-                        }`}
-                        style={{ transform: `scale(${block.data.logoBoxScale ?? 1})` }}
-                      >
-                        {logoImageUrl ? (
-                          <img
-                            src={logoImageUrl}
-                            alt={`${logoText} logo`}
-                            className="h-16 w-16 rounded-full object-cover"
-                            style={{
-                              transform: `translate(${block.data.logoX ?? 0}%, ${block.data.logoY ?? 0}%) scale(${block.data.logoScale ?? 1})`,
-                            }}
-                          />
-                        ) : (
-                          <span
-                            style={{
-                              transform: `translate(${block.data.logoX ?? 0}%, ${block.data.logoY ?? 0}%) scale(${block.data.logoScale ?? 1})`,
-                            }}
-                          >
-                            {logoMark}
-                          </span>
-                        )}
-                      </div>
-                    )
+                    <div className="flex w-full justify-center sm:w-auto sm:justify-center sm:mt-0 mt-2">
+                      {wrapLink(
+                        block.data.logoLinkEnabled,
+                        block.data.logoLinkUrl,
+                        <div
+                          data-edit="heroLogo"
+                          data-block-index={index}
+                          className={`flex h-20 w-20 items-center justify-center text-2xl font-semibold ${
+                            showLogoBox
+                              ? "rounded-3xl border border-amber-100/40 bg-white/10"
+                              : ""
+                          }`}
+                          style={{ transform: `scale(${block.data.logoBoxScale ?? 1})` }}
+                        >
+                          {logoImageUrl ? (
+                            <img
+                              src={logoImageUrl}
+                              alt={`${logoText} logo`}
+                              className="logo-transform h-16 w-16 rounded-full object-cover"
+                              style={
+                                {
+                                  "--logo-x": `${block.data.logoX ?? 0}%`,
+                                  "--logo-y": `${block.data.logoY ?? 0}%`,
+                                  "--logo-scale": String(block.data.logoScale ?? 1),
+                                } as React.CSSProperties
+                              }
+                            />
+                          ) : (
+                            <span
+                              className="logo-transform"
+                              style={
+                                {
+                                  "--logo-x": `${block.data.logoX ?? 0}%`,
+                                  "--logo-y": `${block.data.logoY ?? 0}%`,
+                                  "--logo-scale": String(block.data.logoScale ?? 1),
+                                } as React.CSSProperties
+                              }
+                            >
+                              {logoMark}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : null}
                   {block.data.showTagline ?? true ? (
                     wrapLink(
@@ -277,7 +359,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                 <div
                   data-block-index={index}
                   data-border-effect={leftBorderEffect}
-                  className="relative flex h-[48vh] flex-col items-center justify-center rounded-[32px] border border-stone-200 p-8 text-center text-white shadow-xl sm:h-[60vh] sm:p-10 lg:h-[80vh]"
+                  className="relative flex min-h-[48vh] flex-col items-center justify-center overflow-hidden rounded-[32px] border border-stone-200 p-8 text-center text-white shadow-xl sm:min-h-[60vh] sm:p-10 lg:min-h-[80vh]"
                   style={{
                     backgroundColor: block.data.leftAccent,
                     borderColor: borderEnabled ? borderColor : "transparent",
@@ -311,16 +393,31 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                           <img
                             src={logoImageUrl}
                             alt={`${logoText} logo`}
-                            className="h-12 w-12 rounded-full object-cover"
-                            style={{
-                              transform: `translate(${block.data.leftLogoX ?? 0}%, ${block.data.leftLogoY ?? 0}%) scale(${block.data.leftLogoScale ?? 1})`,
-                            }}
+                            className="logo-transform-left h-12 w-12 rounded-full object-cover"
+                            style={
+                              {
+                                "--logo-x": `${block.data.leftLogoX ?? 0}%`,
+                                "--logo-y": `${block.data.leftLogoY ?? 0}%`,
+                                "--logo-scale": String(block.data.leftLogoScale ?? 1),
+                                "--logo-scale-mobile": String(
+                                  Math.min(1, block.data.leftLogoScale ?? 1)
+                                ),
+                              } as React.CSSProperties
+                            }
                           />
                         ) : (
                           <span
-                            style={{
-                              transform: `translate(${block.data.leftLogoX ?? 0}%, ${block.data.leftLogoY ?? 0}%) scale(${block.data.leftLogoScale ?? 1})`,
-                            }}
+                            className="logo-transform-left"
+                            style={
+                              {
+                                "--logo-x": `${block.data.leftLogoX ?? 0}%`,
+                                "--logo-y": `${block.data.leftLogoY ?? 0}%`,
+                                "--logo-scale": String(block.data.leftLogoScale ?? 1),
+                                "--logo-scale-mobile": String(
+                                  Math.min(1, block.data.leftLogoScale ?? 1)
+                                ),
+                              } as React.CSSProperties
+                            }
                           >
                             {logoMark}
                           </span>
@@ -334,7 +431,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     <h3
                       data-edit="leftTitle"
                       data-block-index={index}
-                      className="text-2xl font-semibold sm:text-3xl"
+                      className="mobile-no-transform text-2xl font-semibold sm:text-3xl"
                       style={styleFrom(block.data.leftTitleStyle, globals?.bodyFont)}
                     >
                       {block.data.leftTitle}
@@ -346,7 +443,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     <p
                       data-edit="leftBody"
                       data-block-index={index}
-                      className="mt-4 text-sm text-white/80 sm:text-base"
+                      className="mobile-no-transform mt-4 text-sm text-white/80 sm:text-base"
                       style={styleFrom(block.data.leftBodyStyle, globals?.bodyFont)}
                     >
                       {block.data.leftBody}
@@ -396,7 +493,23 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                         muted
                         loop
                         playsInline
+                        data-autoplay="true"
+                        preload="auto"
+                        controls={false}
                         src={block.data.rightMedia.url}
+                        onClick={(event) => {
+                          const video = event.currentTarget;
+                          video.muted = true;
+                          video.play().catch(() => {});
+                        }}
+                        onLoadedData={(event) => {
+                          const video = event.currentTarget;
+                          video.muted = true;
+                          const playPromise = video.play();
+                          if (playPromise && typeof playPromise.catch === "function") {
+                            playPromise.catch(() => {});
+                          }
+                        }}
                         style={{
                           objectPosition: `${block.data.rightMedia.x}% ${block.data.rightMedia.y}%`,
                           transform: `scale(${block.data.rightMedia.scale})`,
@@ -468,14 +581,21 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                   Sip Society Menu
                 </p>
                 <h2 className="mt-4 text-4xl font-semibold text-stone-900 sm:text-5xl">
-                  {block.data.heading}
+                  <span style={styleFrom(block.data.headingStyle, globals?.bodyFont)}>
+                    {block.data.heading}
+                  </span>
                 </h2>
-                <p className="mt-3 max-w-2xl text-sm text-stone-600">
+                <p
+                  className="mt-3 max-w-2xl text-sm text-stone-600"
+                  style={styleFrom(block.data.subheadingStyle, globals?.bodyFont)}
+                >
                   {block.data.subheading}
                 </p>
                 {block.data.note ? (
                   <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-                    {block.data.note}
+                    <span style={styleFrom(block.data.noteStyle, globals?.bodyFont)}>
+                      {block.data.note}
+                    </span>
                   </div>
                 ) : null}
                 <div className="mt-10 grid gap-8 lg:grid-cols-2">
@@ -484,24 +604,40 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                       key={`${section.title}-${sectionIndex}`}
                       className="rounded-3xl border border-stone-200 bg-stone-50/80 p-6"
                     >
-                      <h3 className="text-lg font-semibold text-stone-800">
+                      <h3
+                        className="text-lg font-semibold text-stone-800"
+                        style={styleFrom(block.data.sectionTitleStyle, globals?.bodyFont)}
+                      >
                         {section.title}
                       </h3>
                       <div className="mt-4 space-y-4">
                         {section.items.map((item, itemIndex) => (
                           <div
-                            key={`${item.name}-${itemIndex}`}
+                            key={`${item.id ?? item.name}-${itemIndex}`}
                             className="flex items-start justify-between gap-4"
                           >
                             <div>
-                              <p className="text-sm font-semibold text-stone-900">
+                              <p
+                                className="text-sm font-semibold text-stone-900"
+                                style={styleFrom(block.data.itemNameStyle, globals?.bodyFont)}
+                              >
                                 {item.name}
                               </p>
-                              <p className="text-xs text-stone-500">{item.detail}</p>
+                              <p
+                                className="text-xs text-stone-500"
+                                style={styleFrom(block.data.itemDetailStyle, globals?.bodyFont)}
+                              >
+                                {item.detail}
+                              </p>
                             </div>
-                            <span className="text-sm font-semibold text-stone-700">
-                              {item.price}
-                            </span>
+                            {block.data.showPrices !== false && item.showPrice !== false ? (
+                              <span
+                                className="text-sm font-semibold text-stone-700"
+                                style={styleFrom(block.data.itemPriceStyle, globals?.bodyFont)}
+                              >
+                                {item.price}
+                              </span>
+                            ) : null}
                           </div>
                         ))}
                       </div>
@@ -544,6 +680,13 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     </p>
                   ) : null}
                   <div className="flex w-full flex-col items-center gap-3">
+                    <p
+                      data-edit="footerJoinLabel"
+                      data-block-index={index}
+                      className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500"
+                    >
+                      {block.data.joinLabel ?? "Join us"}
+                    </p>
                     <input
                       className="w-full max-w-sm rounded-full border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700 shadow-sm"
                       placeholder={block.data.leadPlaceholder ?? "Enter your email"}
@@ -576,7 +719,9 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-4">
-                    {block.data.links.map((link) => (
+                    {block.data.links
+                      .filter((link) => link.label.trim().toLowerCase() !== "spotify")
+                      .map((link) => (
                       <a
                         key={link.label}
                         href={link.href}

@@ -28,6 +28,7 @@ const overlayBoxBase =
 
 const EDIT_LABELS: Record<string, string> = {
   heroVideo: "Edit video",
+  heroImage: "Edit image",
   heroLogo: "Edit logo",
   logoText: "Edit logo text",
   heroTagline: "Edit tagline",
@@ -87,6 +88,8 @@ const mapEditToTarget = (
   switch (edit) {
     case "heroVideo":
       return { kind: "media", scope: "heroVideo", blockIndex };
+    case "heroImage":
+      return { kind: "media", scope: "heroImage", blockIndex };
     case "heroLogo":
       return { kind: "logo", scope: "hero", blockIndex };
     case "logoText":

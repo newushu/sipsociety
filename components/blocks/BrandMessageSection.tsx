@@ -210,7 +210,7 @@ export default function BrandMessageSection({
         </div>
       ) : null}
       {showLogoMark ? (
-        <div className="relative inline-flex items-center justify-center">
+        <div className="relative z-20 inline-flex items-center justify-center">
           {wrapLink(
             logoLink?.enabled,
             logoLink?.url,
@@ -259,7 +259,7 @@ export default function BrandMessageSection({
           ) : null}
         </div>
       ) : null}
-      <div className="relative inline-flex flex-col items-center">
+      <div className="relative z-20 inline-flex flex-col items-center">
         {headingControls ? (
           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full">
             {headingControls}
@@ -280,6 +280,8 @@ export default function BrandMessageSection({
             </p>
           ) : (
             <p
+              data-edit="brandHeading"
+              data-block-index={dataBlockIndex}
               className="text-xs font-semibold uppercase tracking-[0.35em] text-stone-500"
               style={headingStyle}
             >
@@ -288,7 +290,7 @@ export default function BrandMessageSection({
           )
         )}
       </div>
-      <div className="relative inline-flex flex-col items-center">
+      <div className="relative z-20 inline-flex flex-col items-center">
         {messageControls ? (
           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full">
             {messageControls}
@@ -309,6 +311,8 @@ export default function BrandMessageSection({
             </h2>
           ) : (
             <h2
+              data-edit="brandMessage"
+              data-block-index={dataBlockIndex}
               className="max-w-2xl text-2xl font-semibold text-stone-900 sm:text-3xl"
               style={messageStyle}
             >

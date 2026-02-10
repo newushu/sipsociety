@@ -8,9 +8,23 @@ type Props = {
   globals: GlobalSettings;
   links: { href: string; label: string }[];
   children: React.ReactNode;
+  allowOverflow?: boolean;
 };
 
-export default function HomePageShell({ globals, links, children }: Props) {
+export default function HomePageShell({
+  globals,
+  links,
+  children,
+  allowOverflow = false,
+}: Props) {
+  const resolvedLinks = (() => {
+    const hasHome = links.some((link) => {
+      const href = (link.href || "").trim().replace(/\/+$/, "");
+      return href === "" || href === "/";
+    });
+    if (hasHome) return links;
+    return [{ href: "/", label: "Home" }, ...links];
+  })();
   const logoTextStyle = globals.logoTextStyle
     ? {
         fontSize: `${globals.logoTextStyle.size}px`,
@@ -32,7 +46,7 @@ export default function HomePageShell({ globals, links, children }: Props) {
       className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-stone-100 text-stone-900"
       style={{ fontFamily: fontFamilyForKey(globals.bodyFont) }}
     >
-      <div className="relative overflow-hidden">
+      <div className={allowOverflow ? "relative overflow-visible" : "relative overflow-hidden"}>
         <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-amber-200/50 blur-3xl" />
         <div className="pointer-events-none absolute -right-10 top-24 h-72 w-72 rounded-full bg-stone-200/70 blur-3xl" />
         <SiteHeader
@@ -55,7 +69,9 @@ export default function HomePageShell({ globals, links, children }: Props) {
           menuPanelBg={globals.menuPanelBg}
           menuPanelTextColor={globals.menuPanelTextColor}
           menuPanelWidthPct={globals.menuPanelWidthPct}
-          links={links}
+          facebookUrl={globals.facebookUrl}
+          instagramUrl={globals.instagramUrl}
+          links={resolvedLinks}
         />
         <main className="relative mx-auto max-w-6xl px-6 pb-16 pt-0">{children}</main>
       </div>

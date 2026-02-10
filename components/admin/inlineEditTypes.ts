@@ -8,11 +8,16 @@ export type InlineEditTarget =
       kind: "media";
       scope:
         | "heroVideo"
+        | "heroImage"
         | "middleMedia"
         | "rightMedia"
         | "landscapeMedia"
         | "brandTopImage"
-        | "brandBgVideo";
+        | "brandBgVideo"
+        | "careerHeroImage"
+        | "aboutHeroImage"
+        | "aboutHeroLogo"
+        | "aboutSectionMedia";
       blockIndex: number;
     }
   | {
@@ -27,11 +32,35 @@ export type InlineEditTarget =
         | "caption"
         | "footerTagline"
         | "footerLead"
-        | "footerButton";
+        | "footerButton"
+        | "careerHeroEyebrow"
+        | "careerHeroHeadline"
+        | "careerHeroBody"
+        | "careerRolesHeading"
+        | "careerRolesEmpty"
+        | "careerApplyHeading"
+        | "careerApplyBody"
+        | "careerApplyButton"
+        | "aboutHeroTitle"
+        | "aboutHeroBody"
+        | "aboutSectionTitle"
+        | "aboutSectionHeading"
+        | "aboutSectionBody";
+      blockIndex?: number;
+    }
+  | {
+      kind: "container";
+      scope: "careerApplyCard" | "careerFormCard";
       blockIndex?: number;
     }
   | {
       kind: "animation";
-      scope: "brandAnimation";
+      scope:
+        | "brandAnimation"
+        | "aboutHeroLogoAnimation"
+        | "aboutHeroTitleAnimation"
+        | "aboutHeroBodyAnimation"
+        | "aboutSectionTextAnimation"
+        | "aboutSectionMediaAnimation";
       blockIndex: number;
     };

@@ -4,12 +4,15 @@ export type CtaLink = {
 };
 
 export type TextStyle = {
-  size: number;
-  weight: number;
+  size?: number;
+  weight?: number;
   italic?: boolean;
   x?: number;
   y?: number;
   font?: FontKey;
+  color?: string;
+  tracking?: number;
+  transform?: "uppercase" | "lowercase" | "capitalize" | "none";
 };
 
 export type FontKey =
@@ -58,12 +61,34 @@ export type MediaAsset = {
 };
 
 export type MenuItem = {
+  id: string;
   name: string;
   detail: string;
   price: string;
+  showPrice?: boolean;
+  namePos?: { x: number; y: number };
+  detailPos?: { x: number; y: number };
+  pricePos?: { x: number; y: number };
+};
+
+export type AdminNoteCategory =
+  | "style format"
+  | "feature add"
+  | "page addition"
+  | "not working";
+
+export type AdminNote = {
+  id: string;
+  category: AdminNoteCategory;
+  subject: string;
+  body: string;
+  createdAt: string;
+  completed?: boolean;
+  completedAt?: string;
 };
 
 export type MenuSection = {
+  id: string;
   title: string;
   items: MenuItem[];
 };
@@ -75,6 +100,14 @@ export type MenuBlock = {
     heading: string;
     subheading: string;
     note: string;
+    headingStyle?: TextStyle;
+    subheadingStyle?: TextStyle;
+    noteStyle?: TextStyle;
+    sectionTitleStyle?: TextStyle;
+    itemNameStyle?: TextStyle;
+    itemDetailStyle?: TextStyle;
+    itemPriceStyle?: TextStyle;
+    showPrices?: boolean;
     sections: MenuSection[];
   };
 };
@@ -84,9 +117,13 @@ export type HeroBlock = {
   type: "hero";
   data: {
     videoUrl: string;
+    imageUrl?: string;
     videoX: number;
     videoY: number;
     videoScale: number;
+    imageX?: number;
+    imageY?: number;
+    imageScale?: number;
     overlayOpacity: number;
     videoDesaturate?: number;
     videoLinkEnabled?: boolean;
@@ -194,6 +231,7 @@ export type FooterBlock = {
     taglineLinkUrl?: string;
     linkStyle?: TextStyle;
     links: { label: string; href: string }[];
+    joinLabel?: string;
     leadText?: string;
     leadStyle?: TextStyle;
     leadPlaceholder?: string;
@@ -216,6 +254,120 @@ export type BlockType = ContentBlock["type"];
 export type PageContent = {
   title: string;
   blocks: ContentBlock[];
+  career?: CareerContent;
+  about?: AboutContent;
+  gallery?: GalleryContent;
+};
+
+export type GalleryItem = {
+  id: string;
+  url?: string;
+  alt?: string;
+  comment?: string;
+  commentDisplay?: "hover" | "always";
+};
+
+export type GalleryRow = {
+  id: string;
+  items: GalleryItem[];
+};
+
+export type GalleryContent = {
+  heading: string;
+  subheading: string;
+  headingStyle?: TextStyle;
+  subheadingStyle?: TextStyle;
+  rows: GalleryRow[];
+  commentX: number;
+  commentY: number;
+  commentSize: number;
+  commentColor: string;
+  commentFont?: FontKey;
+  commentOpacity?: number;
+  tileGap?: number;
+  favoriteThreshold?: number;
+};
+
+export type CareerContent = {
+  heroImageUrl: string;
+  heroImageDesaturate: number;
+  heroEyebrow: string;
+  heroHeadline: string;
+  heroBody: string;
+  heroEyebrowStyle?: TextStyle;
+  heroHeadlineStyle?: TextStyle;
+  heroBodyStyle?: TextStyle;
+  rolesHeading: string;
+  rolesEmptyText: string;
+  rolesHeadingStyle?: TextStyle;
+  rolesEmptyStyle?: TextStyle;
+  applyHeading: string;
+  applyBody: string;
+  applyButtonText: string;
+  applyHeadingStyle?: TextStyle;
+  applyBodyStyle?: TextStyle;
+  applyButtonStyle?: TextStyle;
+  applyCardBgColor: string;
+  applyCardBgOpacity: number;
+  applyCardTextColor: string;
+  formCardBgColor: string;
+  formCardBgOpacity: number;
+  formCardTextColor: string;
+};
+
+export type AboutAnimationType =
+  | "none"
+  | "move-up"
+  | "move-down"
+  | "move-left"
+  | "move-right"
+  | "zoom-in"
+  | "zoom-out"
+  | "fade"
+  | "blur"
+  | "rotate"
+  | "flip"
+  | "slide-up";
+
+export type AboutAnimation = {
+  type: AboutAnimationType;
+  trigger?: "once" | "always";
+  playId?: number;
+  delayMs?: number;
+  durationMs?: number;
+};
+
+export type AboutSection = {
+  id: string;
+  mediaType: "image" | "video";
+  mediaUrl: string;
+  mediaAlt?: string;
+  mediaSide: "left" | "right";
+  heading: string;
+  body: string;
+  headingStyle?: TextStyle;
+  bodyStyle?: TextStyle;
+  mediaAnimation?: AboutAnimation;
+  textAnimation?: AboutAnimation;
+};
+
+export type AboutContent = {
+  heroImageUrl: string;
+  heroOverlayOpacity: number;
+  heroLogoUrl: string;
+  heroLogoScale: number;
+  heroLogoX: number;
+  heroLogoY: number;
+  heroTitle: string;
+  heroBody: string;
+  heroTitleStyle?: TextStyle;
+  heroBodyStyle?: TextStyle;
+  heroTitleAnimation?: AboutAnimation;
+  heroBodyAnimation?: AboutAnimation;
+  heroLogoAnimation?: AboutAnimation;
+  sectionTitle: string;
+  sectionTitleStyle?: TextStyle;
+  sections: AboutSection[];
 };
 
 export type GlobalSettings = {
@@ -248,6 +400,20 @@ export type GlobalSettings = {
   introHoldMs?: number;
   introWipeMs?: number;
   introFadeMs?: number;
+  introAnimationType?:
+    | "wipe"
+    | "fade"
+    | "slide"
+    | "radial"
+    | "pour"
+    | "iris"
+    | "diagonal"
+    | "shutter"
+    | "steam"
+    | "dissolve";
+  introLogoScale?: number;
+  introLogoX?: number;
+  introLogoY?: number;
   menuButtonText?: string;
   menuButtonTextColor?: string;
   menuButtonBorderColor?: string;
@@ -260,5 +426,8 @@ export type GlobalSettings = {
   menuPanelBg?: string;
   menuPanelTextColor?: string;
   menuPanelWidthPct?: number;
+  facebookUrl?: string;
+  instagramUrl?: string;
   menuItems?: { id: string; label: string; href: string }[];
+  adminNotes?: AdminNote[];
 };

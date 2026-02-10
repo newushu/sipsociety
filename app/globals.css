@@ -131,10 +131,30 @@ h4 {
   transition: opacity 0.3s ease;
 }
 
-html[data-intro="true"] .site-header {
-  opacity: 0;
-  pointer-events: none;
+.logo-transform {
+  transform: translate(var(--logo-x, 0%), var(--logo-y, 0%)) scale(var(--logo-scale, 1));
+  transform-origin: center;
 }
+
+.logo-transform-left {
+  transform: translate(var(--logo-x, 0%), var(--logo-y, 0%)) scale(var(--logo-scale, 1));
+  transform-origin: center;
+}
+
+.mobile-no-transform {
+  transform: none !important;
+}
+
+@media (max-width: 640px) {
+  .logo-transform {
+    transform: translate(0%, 0%) scale(var(--logo-scale, 1));
+  }
+
+  .logo-transform-left {
+    transform: translate(0%, 0%) scale(var(--logo-scale-mobile, 1));
+  }
+}
+
 
 .brand-anim {
   opacity: 1;
@@ -156,4 +176,1069 @@ html[data-intro="true"] .site-header {
 .brand-anim-roll.is-revealed {
   opacity: 1;
   transform: translateY(0) rotateX(0deg) scale(1);
+}
+
+.intro-pour {
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: forwards;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 100%,
+    90% 99%,
+    80% 100%,
+    70% 98%,
+    60% 100%,
+    50% 97%,
+    40% 100%,
+    30% 98%,
+    20% 100%,
+    10% 99%,
+    0 100%
+  );
+}
+
+.intro-pour-exit {
+  animation-name: pourReveal;
+}
+
+@keyframes pourReveal {
+  0% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 100%,
+      90% 98.82%,
+      80% 98.1%,
+      70% 98.1%,
+      60% 98.82%,
+      50% 100%,
+      40% 100%,
+      30% 100%,
+      20% 100%,
+      10% 100%,
+      0% 100%
+    );
+  }
+  2% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 97.79%,
+      90% 96.51%,
+      80% 95.64%,
+      70% 95.51%,
+      60% 96.21%,
+      50% 97.49%,
+      40% 98.86%,
+      30% 99.84%,
+      20% 100%,
+      10% 99.45%,
+      0% 98%
+    );
+  }
+  4% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 95.63%,
+      90% 94.26%,
+      80% 93.23%,
+      70% 92.96%,
+      60% 93.59%,
+      50% 94.93%,
+      40% 96.49%,
+      30% 97.72%,
+      20% 98.18%,
+      10% 97.73%,
+      0% 96%
+    );
+  }
+  6% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 93.5%,
+      90% 92.07%,
+      80% 90.87%,
+      70% 90.43%,
+      60% 90.97%,
+      50% 92.34%,
+      40% 94.06%,
+      30% 95.54%,
+      20% 96.27%,
+      10% 96.02%,
+      0% 94%
+    );
+  }
+  8% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 91.4%,
+      90% 89.93%,
+      80% 88.58%,
+      70% 87.96%,
+      60% 88.36%,
+      50% 89.72%,
+      40% 91.58%,
+      30% 93.3%,
+      20% 94.31%,
+      10% 94.29%,
+      0% 92%
+    );
+  }
+  10% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 89.32%,
+      90% 87.84%,
+      80% 86.36%,
+      70% 85.54%,
+      60% 85.78%,
+      50% 87.08%,
+      40% 89.04%,
+      30% 91.0%,
+      20% 92.3%,
+      10% 92.54%,
+      0% 90%
+    );
+  }
+  12% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 87.25%,
+      90% 85.8%,
+      80% 84.2%,
+      70% 83.18%,
+      60% 83.22%,
+      50% 84.43%,
+      40% 86.46%,
+      30% 88.63%,
+      20% 90.23%,
+      10% 90.76%,
+      0% 88%
+    );
+  }
+  14% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 85.17%,
+      90% 83.79%,
+      80% 82.11%,
+      70% 80.88%,
+      60% 80.71%,
+      50% 81.79%,
+      40% 83.84%,
+      30% 86.2%,
+      20% 88.1%,
+      10% 88.93%,
+      0% 86%
+    );
+  }
+  16% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 83.07%,
+      90% 81.81%,
+      80% 80.07%,
+      70% 78.66%,
+      60% 78.26%,
+      50% 79.17%,
+      40% 81.2%,
+      30% 83.7%,
+      20% 85.89%,
+      10% 87.05%,
+      0% 84%
+    );
+  }
+  18% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 80.94%,
+      90% 79.85%,
+      80% 78.09%,
+      70% 76.51%,
+      60% 75.86%,
+      50% 76.58%,
+      40% 78.53%,
+      30% 81.16%,
+      20% 83.61%,
+      10% 85.11%,
+      0% 82%
+    );
+  }
+  20% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 78.78%,
+      90% 77.89%,
+      80% 76.16%,
+      70% 74.43%,
+      60% 73.54%,
+      50% 74.02%,
+      40% 75.87%,
+      30% 78.56%,
+      20% 81.25%,
+      10% 83.1%,
+      0% 80%
+    );
+  }
+  22% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 76.56%,
+      90% 75.93%,
+      80% 74.27%,
+      70% 72.42%,
+      60% 71.29%,
+      50% 71.52%,
+      40% 73.21%,
+      30% 75.93%,
+      20% 78.83%,
+      10% 81.01%,
+      0% 78%
+    );
+  }
+  24% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 74.29%,
+      90% 73.94%,
+      80% 72.4%,
+      70% 70.48%,
+      60% 69.12%,
+      50% 69.07%,
+      40% 70.57%,
+      30% 73.26%,
+      20% 76.34%,
+      10% 78.85%,
+      0% 76%
+    );
+  }
+  26% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 71.94%,
+      90% 71.92%,
+      80% 70.55%,
+      70% 68.59%,
+      60% 67.03%,
+      50% 66.7%,
+      40% 67.97%,
+      30% 70.59%,
+      20% 73.79%,
+      10% 76.6%,
+      0% 74%
+    );
+  }
+  28% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 69.52%,
+      90% 69.85%,
+      80% 68.7%,
+      70% 66.76%,
+      60% 65.02%,
+      50% 64.4%,
+      40% 65.41%,
+      30% 67.91%,
+      20% 71.2%,
+      10% 74.28%,
+      0% 72%
+    );
+  }
+  30% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 67.01%,
+      90% 67.73%,
+      80% 66.84%,
+      70% 64.96%,
+      60% 63.08%,
+      50% 62.19%,
+      40% 62.91%,
+      30% 65.24%,
+      20% 68.56%,
+      10% 71.88%,
+      0% 70%
+    );
+  }
+  32% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 64.42%,
+      90% 65.54%,
+      80% 64.96%,
+      70% 63.19%,
+      60% 61.21%,
+      50% 60.06%,
+      40% 60.48%,
+      30% 62.59%,
+      20% 65.9%,
+      10% 69.42%,
+      0% 68%
+    );
+  }
+  34% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 61.75%,
+      90% 63.28%,
+      80% 63.04%,
+      70% 61.44%,
+      60% 59.4%,
+      50% 58.01%,
+      40% 58.12%,
+      30% 59.99%,
+      20% 63.22%,
+      10% 66.89%,
+      0% 66%
+    );
+  }
+  36% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 58.99%,
+      90% 60.93%,
+      80% 61.07%,
+      70% 59.69%,
+      60% 57.64%,
+      50% 56.05%,
+      40% 55.84%,
+      30% 57.43%,
+      20% 60.54%,
+      10% 64.31%,
+      0% 64%
+    );
+  }
+  38% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 56.16%,
+      90% 58.5%,
+      80% 59.04%,
+      70% 57.92%,
+      60% 55.93%,
+      50% 54.16%,
+      40% 53.65%,
+      30% 54.93%,
+      20% 57.87%,
+      10% 61.69%,
+      0% 62%
+    );
+  }
+  40% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 53.25%,
+      90% 55.98%,
+      80% 56.94%,
+      70% 56.13%,
+      60% 54.24%,
+      50% 52.35%,
+      40% 51.54%,
+      30% 52.5%,
+      20% 55.23%,
+      10% 59.04%,
+      0% 60%
+    );
+  }
+  42% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 50.28%,
+      90% 53.37%,
+      80% 54.75%,
+      70% 54.3%,
+      60% 52.57%,
+      50% 50.6%,
+      40% 49.53%,
+      30% 50.16%,
+      20% 52.63%,
+      10% 56.38%,
+      0% 58%
+    );
+  }
+  44% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 47.26%,
+      90% 50.67%,
+      80% 52.49%,
+      70% 52.42%,
+      60% 50.89%,
+      50% 48.9%,
+      40% 47.6%,
+      30% 47.89%,
+      20% 50.08%,
+      10% 53.71%,
+      0% 56%
+    );
+  }
+  46% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 44.2%,
+      90% 47.9%,
+      80% 50.13%,
+      70% 50.47%,
+      60% 49.21%,
+      50% 47.24%,
+      40% 45.75%,
+      30% 45.72%,
+      20% 47.59%,
+      10% 51.06%,
+      0% 54%
+    );
+  }
+  48% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 41.11%,
+      90% 45.05%,
+      80% 47.69%,
+      70% 48.45%,
+      60% 47.49%,
+      50% 45.61%,
+      40% 43.97%,
+      30% 43.64%,
+      20% 45.18%,
+      10% 48.44%,
+      0% 52%
+    );
+  }
+  50% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 38.0%,
+      90% 42.14%,
+      80% 45.16%,
+      70% 46.36%,
+      60% 45.74%,
+      50% 44.0%,
+      40% 42.26%,
+      30% 41.64%,
+      20% 42.84%,
+      10% 45.86%,
+      0% 50%
+    );
+  }
+  52% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 34.89%,
+      90% 39.17%,
+      80% 42.53%,
+      70% 44.17%,
+      60% 43.93%,
+      50% 42.39%,
+      40% 40.6%,
+      30% 39.74%,
+      20% 40.6%,
+      10% 43.33%,
+      0% 48%
+    );
+  }
+  54% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 31.8%,
+      90% 36.17%,
+      80% 39.83%,
+      70% 41.89%,
+      60% 42.06%,
+      50% 40.76%,
+      40% 38.98%,
+      30% 37.91%,
+      20% 38.44%,
+      10% 40.87%,
+      0% 46%
+    );
+  }
+  56% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 28.74%,
+      90% 33.13%,
+      80% 37.06%,
+      70% 39.53%,
+      60% 40.11%,
+      50% 39.1%,
+      40% 37.39%,
+      30% 36.16%,
+      20% 36.37%,
+      10% 38.48%,
+      0% 44%
+    );
+  }
+  58% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 25.72%,
+      90% 30.09%,
+      80% 34.22%,
+      70% 37.07%,
+      60% 38.09%,
+      50% 37.4%,
+      40% 35.82%,
+      30% 34.47%,
+      20% 34.4%,
+      10% 36.17%,
+      0% 42%
+    );
+  }
+  60% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 22.75%,
+      90% 27.04%,
+      80% 31.33%,
+      70% 34.54%,
+      60% 35.98%,
+      50% 35.65%,
+      40% 34.24%,
+      30% 32.83%,
+      20% 32.5%,
+      10% 33.94%,
+      0% 40%
+    );
+  }
+  62% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 19.84%,
+      90% 24.01%,
+      80% 28.4%,
+      70% 31.92%,
+      60% 33.78%,
+      50% 33.84%,
+      40% 32.65%,
+      30% 31.23%,
+      20% 30.69%,
+      10% 31.81%,
+      0% 38%
+    );
+  }
+  64% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 17.01%,
+      90% 21.0%,
+      80% 25.45%,
+      70% 29.23%,
+      60% 31.49%,
+      50% 31.95%,
+      40% 31.03%,
+      30% 29.66%,
+      20% 28.95%,
+      10% 29.76%,
+      0% 36%
+    );
+  }
+  66% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 14.25%,
+      90% 18.04%,
+      80% 22.48%,
+      70% 26.48%,
+      60% 29.12%,
+      50% 29.99%,
+      40% 29.37%,
+      30% 28.1%,
+      20% 27.27%,
+      10% 27.8%,
+      0% 34%
+    );
+  }
+  68% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 11.58%,
+      90% 15.13%,
+      80% 19.51%,
+      70% 23.68%,
+      60% 26.66%,
+      50% 27.94%,
+      40% 27.66%,
+      30% 26.54%,
+      20% 25.63%,
+      10% 25.92%,
+      0% 32%
+    );
+  }
+  70% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 8.99%,
+      90% 12.28%,
+      80% 16.56%,
+      70% 20.84%,
+      60% 24.13%,
+      50% 25.81%,
+      40% 25.88%,
+      30% 24.96%,
+      20% 24.04%,
+      10% 24.11%,
+      0% 30%
+    );
+  }
+  72% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 6.48%,
+      90% 9.5%,
+      80% 13.64%,
+      70% 17.98%,
+      60% 21.53%,
+      50% 23.6%,
+      40% 24.04%,
+      30% 23.36%,
+      20% 22.47%,
+      10% 22.37%,
+      0% 28%
+    );
+  }
+  74% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 4.06%,
+      90% 6.79%,
+      80% 10.75%,
+      70% 15.11%,
+      60% 18.88%,
+      50% 21.3%,
+      40% 22.12%,
+      30% 21.71%,
+      20% 20.91%,
+      10% 20.69%,
+      0% 26%
+    );
+  }
+  76% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 1.71%,
+      90% 4.16%,
+      80% 7.92%,
+      70% 12.24%,
+      60% 16.18%,
+      50% 18.93%,
+      40% 20.13%,
+      30% 20.02%,
+      20% 19.34%,
+      10% 19.05%,
+      0% 24%
+    );
+  }
+  78% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 1.61%,
+      80% 5.14%,
+      70% 9.39%,
+      60% 13.45%,
+      50% 16.48%,
+      40% 18.05%,
+      30% 18.27%,
+      20% 17.77%,
+      10% 17.45%,
+      0% 22%
+    );
+  }
+  80% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 2.43%,
+      70% 6.56%,
+      60% 10.69%,
+      50% 13.98%,
+      40% 15.9%,
+      30% 16.45%,
+      20% 16.16%,
+      10% 15.87%,
+      0% 20%
+    );
+  }
+  82% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 3.77%,
+      60% 7.93%,
+      50% 11.42%,
+      40% 13.67%,
+      30% 14.57%,
+      20% 14.52%,
+      10% 14.29%,
+      0% 18%
+    );
+  }
+  84% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 1.03%,
+      60% 5.17%,
+      50% 8.83%,
+      40% 11.37%,
+      30% 12.61%,
+      20% 12.82%,
+      10% 12.72%,
+      0% 16%
+    );
+  }
+  86% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 2.43%,
+      50% 6.21%,
+      40% 9.01%,
+      30% 10.58%,
+      20% 11.08%,
+      10% 11.12%,
+      0% 14%
+    );
+  }
+  88% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 3.57%,
+      40% 6.6%,
+      30% 8.47%,
+      20% 9.27%,
+      10% 9.5%,
+      0% 12%
+    );
+  }
+  90% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 0.92%,
+      40% 4.14%,
+      30% 6.3%,
+      20% 7.4%,
+      10% 7.84%,
+      0% 10%
+    );
+  }
+  92% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 0%,
+      40% 1.65%,
+      30% 4.07%,
+      20% 5.46%,
+      10% 6.14%,
+      0% 8%
+    );
+  }
+  94% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 0%,
+      40% 0%,
+      30% 1.79%,
+      20% 3.46%,
+      10% 4.38%,
+      0% 6%
+    );
+  }
+  96% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 0%,
+      40% 0%,
+      30% 0%,
+      20% 1.4%,
+      10% 2.57%,
+      0% 4%
+    );
+  }
+  98% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 0%,
+      40% 0%,
+      30% 0%,
+      20% 0%,
+      10% 0.7%,
+      0% 2%
+    );
+  }
+  100% {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 0%,
+      90% 0%,
+      80% 0%,
+      70% 0%,
+      60% 0%,
+      50% 0%,
+      40% 0%,
+      30% 0%,
+      20% 0%,
+      10% 0%,
+      0% 0%
+    );
+  }
+}
+
+.intro-shutter {
+  transition-property: transform, opacity;
+  transition-timing-function: ease-in-out;
+}
+
+.intro-shutter-enter {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.intro-shutter-exit {
+  transform: translateY(-120%);
+  opacity: 0;
+}
+
+.intro-steam {
+  background: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.25), transparent 40%),
+    radial-gradient(circle at 60% 20%, rgba(255,255,255,0.18), transparent 45%),
+    radial-gradient(circle at 80% 60%, rgba(255,255,255,0.2), transparent 50%);
+  mix-blend-mode: screen;
+  animation: steamFloat 6s ease-in-out infinite;
+  opacity: 0.35;
+}
+
+.intro-steam-reveal {
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 140% 140%;
+  mask-size: 140% 140%;
+  -webkit-mask-position: 50% 100%;
+  mask-position: 50% 100%;
+  -webkit-mask-image:
+    radial-gradient(60% 70% at 20% 100%, transparent 0%, rgba(0,0,0,0.7) 55%, #fff 72%),
+    radial-gradient(70% 80% at 75% 100%, transparent 0%, rgba(0,0,0,0.7) 55%, #fff 72%),
+    linear-gradient(to top, transparent 0%, rgba(0,0,0,0.75) 40%, #fff 75%);
+  mask-image:
+    radial-gradient(60% 70% at 20% 100%, transparent 0%, rgba(0,0,0,0.7) 55%, #fff 72%),
+    radial-gradient(70% 80% at 75% 100%, transparent 0%, rgba(0,0,0,0.7) 55%, #fff 72%),
+    linear-gradient(to top, transparent 0%, rgba(0,0,0,0.75) 40%, #fff 75%);
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: forwards;
+}
+
+.intro-steam-reveal-enter {
+  opacity: 1;
+}
+
+.intro-steam-reveal-exit {
+  animation-name: steamReveal;
+}
+
+@keyframes steamReveal {
+  0% {
+    opacity: 1;
+    -webkit-mask-position: 50% 100%;
+    mask-position: 50% 100%;
+  }
+  60% {
+    opacity: 0.65;
+    -webkit-mask-position: 50% 45%;
+    mask-position: 50% 45%;
+  }
+  100% {
+    opacity: 0;
+    -webkit-mask-position: 50% 0%;
+    mask-position: 50% 0%;
+  }
+}
+
+@keyframes steamFloat {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.intro-dissolve {
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)' /></svg>");
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)' /></svg>");
+  mask-size: 140px 140px;
+  -webkit-mask-size: 140px 140px;
+  transition-property: opacity, mask-position;
+  transition-timing-function: ease-in-out;
+}
+
+.intro-dissolve-enter {
+  opacity: 1;
+  mask-position: 0 0;
+  -webkit-mask-position: 0 0;
+}
+
+.intro-dissolve-exit {
+  opacity: 0;
+  mask-position: 60px 60px;
+  -webkit-mask-position: 60px 60px;
+}
+
+/* About page scroll animations */
+.about-anim {
+  opacity: 0;
+  transform: translate3d(0, 0, 0);
+  filter: none;
+  transition-property: opacity, transform, filter;
+  transition-duration: var(--about-anim-duration, 700ms);
+  transition-timing-function: ease;
+  transition-delay: var(--about-anim-delay, 0ms);
+  will-change: opacity, transform, filter;
+}
+
+.about-anim-active {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+.about-anim-none {
+  opacity: 1;
+  transform: none;
+}
+
+.about-anim-move-up {
+  transform: translateY(24px);
+}
+
+.about-anim-move-down {
+  transform: translateY(-24px);
+}
+
+.about-anim-move-left {
+  transform: translateX(24px);
+}
+
+.about-anim-move-right {
+  transform: translateX(-24px);
+}
+
+.about-anim-slide-up {
+  transform: translateY(48px);
+}
+
+.about-anim-zoom-in {
+  transform: scale(0.92);
+}
+
+.about-anim-zoom-out {
+  transform: scale(1.08);
+}
+
+.about-anim-fade {
+  opacity: 0;
+}
+
+.about-anim-blur {
+  opacity: 0;
+  filter: blur(12px);
+}
+
+.about-anim-rotate {
+  transform: rotate(-2deg) translateY(10px);
+}
+
+.about-anim-flip {
+  transform: rotateX(12deg);
+  transform-origin: center;
 }

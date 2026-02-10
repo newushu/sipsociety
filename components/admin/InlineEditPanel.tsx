@@ -14,6 +14,8 @@ import {
 } from "@/lib/content/types";
 import { fontFamilyForKey, fontOptions, sortFontOptions } from "@/lib/content/fonts";
 import { createBrowserClient } from "@/lib/supabase/browser";
+import { defaultAboutContent, defaultCareerContent } from "@/lib/content/defaults";
+import ColorPicker from "@/components/admin/ColorPicker";
 
 const cardClass =
   "rounded-2xl border border-stone-200 bg-white p-4 text-xs text-stone-700 shadow-sm";
@@ -27,6 +29,21 @@ const rangeClass =
   "mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-amber-500 [&::-moz-range-thumb]:shadow";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const aboutAnimationOptions = [
+  { value: "none", label: "None" },
+  { value: "move-up", label: "Move up" },
+  { value: "move-down", label: "Move down" },
+  { value: "move-left", label: "Move left" },
+  { value: "move-right", label: "Move right" },
+  { value: "slide-up", label: "Slide up" },
+  { value: "zoom-in", label: "Zoom in" },
+  { value: "zoom-out", label: "Zoom out" },
+  { value: "fade", label: "Fade" },
+  { value: "blur", label: "Blur in" },
+  { value: "rotate", label: "Rotate in" },
+  { value: "flip", label: "Flip" },
+] as const;
 
 type Props = {
   target: InlineEditTarget | null;
@@ -64,6 +81,7 @@ const ensureTextStyle = (style?: TextStyle): TextStyle => ({
   x: style?.x ?? 0,
   y: style?.y ?? 0,
   font: style?.font,
+  color: style?.color,
 });
 
 export default function InlineEditPanel({
@@ -83,6 +101,10 @@ export default function InlineEditPanel({
   const [hoverFont, setHoverFont] = useState<TextStyle["font"] | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const textInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const heroUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const heroImageUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const careerImageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [fontPickerPos, setFontPickerPos] = useState<{ top: number; left: number }>({
     top: 120,
@@ -134,9 +156,12 @@ export default function InlineEditPanel({
     y: number;
   } | null>(null);
 
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
   const handleUpload = async (file: File, onUrl: (url: string) => void) => {
     setUploading(true);
     setUploadError(null);
+    setUploadProgress(0);
     const fileName = `${Date.now()}-${file.name}`.replace(/\s+/g, "-");
     const { error } = await supabase.storage.from("media").upload(fileName, file, {
       upsert: true,
@@ -144,11 +169,15 @@ export default function InlineEditPanel({
     if (error) {
       setUploadError(error.message);
       setUploading(false);
+      setUploadProgress(null);
       return;
     }
     const publicUrl = supabase.storage.from("media").getPublicUrl(fileName).data.publicUrl;
     onUrl(publicUrl);
+    setUploadProgress(100);
+    await loadAssets();
     setUploading(false);
+    window.setTimeout(() => setUploadProgress(null), 800);
   };
 
   const loadAssets = async () => {
@@ -213,6 +242,7 @@ export default function InlineEditPanel({
   }, [target]);
 
   const isVideoUrl = (url: string) => /\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/i.test(url);
+  const isImageUrl = (url: string) => !isVideoUrl(url);
   const formatAssetDate = (asset: AssetItem) => {
     const stamp = asset.updatedAt ?? asset.createdAt;
     if (!stamp) return "Upload date unknown";
@@ -330,7 +360,11 @@ export default function InlineEditPanel({
       ? (() => {
           const block = target.blockIndex !== undefined ? content.blocks[target.blockIndex] : null;
           if (!block) return "";
+          if (target.scope === "careerHeroImage") {
+            return content.career?.heroImageUrl ?? defaultCareerContent.heroImageUrl;
+          }
           if (target.scope === "heroVideo" && block.type === "hero") return block.data.videoUrl ?? "";
+          if (target.scope === "heroImage" && block.type === "hero") return block.data.imageUrl ?? "";
           if (target.scope === "middleMedia" && block.type === "triple-media") {
             return block.data.middleMedia.url ?? "";
           }
@@ -421,6 +455,10 @@ export default function InlineEditPanel({
                           if (target.scope === "heroVideo" && block.type === "hero") {
                             onChangeContent(
                               updateBlock(content, target.blockIndex, { videoUrl: asset.url })
+                            );
+                          } else if (target.scope === "heroImage" && block.type === "hero") {
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, { imageUrl: asset.url })
                             );
                           } else if (
                             target.scope === "middleMedia" &&
@@ -515,6 +553,117 @@ export default function InlineEditPanel({
   }
 
   if (target.kind === "animation") {
+    if (target.scope.startsWith("about")) {
+      const about = { ...defaultAboutContent, ...(content.about ?? {}) };
+      const updateAbout = (next: typeof about) =>
+        onChangeContent({ ...content, about: next });
+      const sectionIndex = target.blockIndex ?? 0;
+      const section = about.sections[sectionIndex];
+
+      const currentAnimation =
+        target.scope === "aboutHeroLogoAnimation"
+          ? about.heroLogoAnimation
+          : target.scope === "aboutHeroTitleAnimation"
+            ? about.heroTitleAnimation
+            : target.scope === "aboutHeroBodyAnimation"
+              ? about.heroBodyAnimation
+              : target.scope === "aboutSectionMediaAnimation"
+                ? section?.mediaAnimation
+                : section?.textAnimation;
+
+      if (
+        (target.scope === "aboutSectionMediaAnimation" ||
+          target.scope === "aboutSectionTextAnimation") &&
+        !section
+      ) {
+        return null;
+      }
+
+      const applyAnimation = (next: typeof currentAnimation) => {
+        if (target.scope === "aboutHeroLogoAnimation") {
+          updateAbout({ ...about, heroLogoAnimation: next });
+          return;
+        }
+        if (target.scope === "aboutHeroTitleAnimation") {
+          updateAbout({ ...about, heroTitleAnimation: next });
+          return;
+        }
+        if (target.scope === "aboutHeroBodyAnimation") {
+          updateAbout({ ...about, heroBodyAnimation: next });
+          return;
+        }
+        if (!section) return;
+        const nextSections = about.sections.map((item, index) => {
+          if (index !== sectionIndex) return item;
+          if (target.scope === "aboutSectionMediaAnimation") {
+            return { ...item, mediaAnimation: next };
+          }
+          return { ...item, textAnimation: next };
+        });
+        updateAbout({ ...about, sections: nextSections });
+      };
+
+      const anim = currentAnimation ?? { type: "none", trigger: "once", playId: 0 };
+
+      return withModal(
+        <div className={cardClass}>
+          <div className="flex items-center justify-between">
+            <p className={labelClass}>About animation</p>
+          </div>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Style
+            <select
+              className={inputClass}
+              value={anim.type}
+              onChange={(event) =>
+                applyAnimation({
+                  ...anim,
+                  type: event.target.value as typeof anim.type,
+                  playId: (anim.playId ?? 0) + 1,
+                })
+              }
+            >
+              {aboutAnimationOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Trigger
+            <select
+              className={inputClass}
+              value={anim.trigger ?? "once"}
+              onChange={(event) =>
+                applyAnimation({
+                  ...anim,
+                  trigger: event.target.value as "once" | "always",
+                  playId: (anim.playId ?? 0) + 1,
+                })
+              }
+            >
+              {["once", "always"].map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+            onClick={() =>
+              applyAnimation({
+                ...anim,
+                playId: (anim.playId ?? 0) + 1,
+              })
+            }
+          >
+            Play animation
+          </button>
+        </div>
+      );
+    }
     const block = content.blocks[target.blockIndex];
     if (!block || block.type !== "brand-message") {
       return null;
@@ -879,6 +1028,424 @@ export default function InlineEditPanel({
   }
 
   if (target.kind === "media") {
+    if (
+      target.scope === "aboutHeroImage" ||
+      target.scope === "aboutHeroLogo" ||
+      target.scope === "aboutSectionMedia"
+    ) {
+      const about = { ...defaultAboutContent, ...(content.about ?? {}) };
+      const updateAbout = (next: typeof about) =>
+        onChangeContent({ ...content, about: next });
+      const isSection = target.scope === "aboutSectionMedia";
+      const section =
+        isSection && typeof target.blockIndex === "number"
+          ? about.sections[target.blockIndex]
+          : null;
+      if (isSection && !section) return null;
+
+      const label =
+        target.scope === "aboutHeroImage"
+          ? "About hero image"
+          : target.scope === "aboutHeroLogo"
+            ? "About hero logo"
+            : "About section media";
+      const mediaUrl = isSection
+        ? section?.mediaUrl ?? ""
+        : target.scope === "aboutHeroLogo"
+          ? about.heroLogoUrl
+          : about.heroImageUrl;
+      const mediaType = isSection ? section?.mediaType ?? "image" : "image";
+      const accept =
+        target.scope === "aboutHeroLogo"
+          ? "image/*"
+          : mediaType === "video"
+            ? "video/*"
+            : "image/*";
+
+      return withModal(
+        <div className={cardClass}>
+          <div className="flex items-center justify-between">
+            <p className={labelClass}>{label}</p>
+            {onClear ? (
+              <button
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={onClear}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Media URL
+            <input
+              className={inputClass}
+              value={mediaUrl}
+              onChange={(event) => {
+                const nextUrl = event.target.value;
+                if (isSection && section) {
+                  const nextSections = about.sections.map((item, index) =>
+                    index === target.blockIndex ? { ...item, mediaUrl: nextUrl } : item
+                  );
+                  updateAbout({ ...about, sections: nextSections });
+                  return;
+                }
+                if (target.scope === "aboutHeroLogo") {
+                  updateAbout({ ...about, heroLogoUrl: nextUrl });
+                  return;
+                }
+                updateAbout({ ...about, heroImageUrl: nextUrl });
+              }}
+            />
+          </label>
+          {isSection ? (
+            <label className="mt-3 text-[10px] text-stone-500">
+              Media type
+              <select
+                className={inputClass}
+                value={mediaType}
+                onChange={(event) => {
+                  if (!section) return;
+                  const nextSections = about.sections.map((item, index) =>
+                    index === target.blockIndex
+                      ? { ...item, mediaType: event.target.value as "image" | "video" }
+                      : item
+                  );
+                  updateAbout({ ...about, sections: nextSections });
+                }}
+              >
+                <option value="image">Image</option>
+                <option value="video">Video</option>
+              </select>
+            </label>
+          ) : null}
+          <div className="mt-3">
+            <p className="text-[10px] text-stone-500">Upload media</p>
+            <input
+              ref={mediaUploadInputRef}
+              className="hidden"
+              type="file"
+              accept={accept}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  handleUpload(file, (url) => {
+                    if (isSection && section) {
+                      const nextSections = about.sections.map((item, index) =>
+                        index === target.blockIndex ? { ...item, mediaUrl: url } : item
+                      );
+                      updateAbout({ ...about, sections: nextSections });
+                      return;
+                    }
+                    if (target.scope === "aboutHeroLogo") {
+                      updateAbout({ ...about, heroLogoUrl: url });
+                      return;
+                    }
+                    updateAbout({ ...about, heroImageUrl: url });
+                  });
+                }
+                if (mediaUploadInputRef.current) {
+                  mediaUploadInputRef.current.value = "";
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm"
+              onClick={() => mediaUploadInputRef.current?.click()}
+            >
+              Upload media
+            </button>
+          </div>
+          {uploading ? (
+            <div className="mt-2 space-y-1">
+              <p className="text-[10px] text-stone-400">Uploading...</p>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+                <div
+                  className={`h-full ${
+                    uploadProgress === 100 ? "bg-amber-500" : "bg-stone-400 animate-pulse"
+                  }`}
+                  style={{ width: `${uploadProgress ?? 35}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+          {uploadError ? (
+            <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>
+          ) : null}
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <p className={labelClass}>Media library</p>
+              <button
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={loadAssets}
+                type="button"
+              >
+                Refresh
+              </button>
+            </div>
+            {loadingAssets ? (
+              <p className="mt-2 text-[10px] text-stone-400">Loading...</p>
+            ) : assetError ? (
+              <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
+            ) : (
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+                <div className="grid grid-cols-4 gap-2">
+                  {assets
+                    .filter((asset) =>
+                      target.scope === "aboutHeroLogo"
+                        ? isImageUrl(asset.url)
+                        : mediaType === "video"
+                          ? isVideoUrl(asset.url)
+                          : isImageUrl(asset.url)
+                    )
+                    .map((asset) => (
+                      <button
+                        key={asset.url}
+                        className="group relative h-16 w-full overflow-hidden rounded-lg border border-stone-200 bg-white"
+                        onClick={() => {
+                          if (isSection && section) {
+                            const nextSections = about.sections.map((item, index) =>
+                              index === target.blockIndex ? { ...item, mediaUrl: asset.url } : item
+                            );
+                            updateAbout({ ...about, sections: nextSections });
+                            return;
+                          }
+                          if (target.scope === "aboutHeroLogo") {
+                            updateAbout({ ...about, heroLogoUrl: asset.url });
+                            return;
+                          }
+                          updateAbout({ ...about, heroImageUrl: asset.url });
+                        }}
+                        onMouseEnter={(event) =>
+                          handlePreviewEnter(event, asset, isVideoUrl(asset.url) ? "video" : "image")
+                        }
+                        onMouseMove={handlePreviewMove}
+                        onMouseLeave={handlePreviewLeave}
+                      >
+                        {isVideoUrl(asset.url) ? (
+                          <video className="h-full w-full object-cover" src={asset.url} />
+                        ) : (
+                          <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                        )}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+            <button
+              className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+              onClick={() => setLibraryExpanded(true)}
+              type="button"
+            >
+              Open full media library
+            </button>
+          </div>
+          {target.scope === "aboutHeroLogo" ? (
+            <div className="mt-4 space-y-3">
+              <label className="text-[10px] text-stone-500">
+                Scale ({(about.heroLogoScale ?? 1).toFixed(2)})
+                <input
+                  className={rangeClass}
+                  type="range"
+                  min={0.4}
+                  max={8}
+                  step={0.05}
+                  value={about.heroLogoScale ?? 1}
+                  onChange={(event) =>
+                    updateAbout({
+                      ...about,
+                      heroLogoScale: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-[10px] text-stone-500">
+                  X ({Math.round(about.heroLogoX ?? 0)}px)
+                  <input
+                    className={rangeClass}
+                    type="range"
+                    min={-200}
+                    max={200}
+                    step={1}
+                    value={about.heroLogoX ?? 0}
+                    onChange={(event) =>
+                      updateAbout({
+                        ...about,
+                        heroLogoX: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label className="text-[10px] text-stone-500">
+                  Y ({Math.round(about.heroLogoY ?? 0)}px)
+                  <input
+                    className={rangeClass}
+                    type="range"
+                    min={-200}
+                    max={200}
+                    step={1}
+                    value={about.heroLogoY ?? 0}
+                    onChange={(event) =>
+                      updateAbout({
+                        ...about,
+                        heroLogoY: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+    if (target.scope === "careerHeroImage") {
+      const career = content.career ?? defaultCareerContent;
+      return withModal(
+        <div className={cardClass}>
+          <div className="flex items-center justify-between">
+            <p className={labelClass}>Career hero image</p>
+            {onClear ? (
+              <button
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={onClear}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Image URL
+            <input
+              className={inputClass}
+              value={career.heroImageUrl}
+              onChange={(event) =>
+                onChangeContent({
+                  ...content,
+                  career: { ...career, heroImageUrl: event.target.value },
+                })
+              }
+            />
+          </label>
+          <div className="mt-3">
+            <p className="text-[10px] text-stone-500">Upload image</p>
+            <input
+              ref={careerImageUploadInputRef}
+              className="hidden"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  handleUpload(file, (url) =>
+                    onChangeContent({
+                      ...content,
+                      career: { ...career, heroImageUrl: url },
+                    })
+                  );
+                }
+                if (careerImageUploadInputRef.current) {
+                  careerImageUploadInputRef.current.value = "";
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm"
+              onClick={() => careerImageUploadInputRef.current?.click()}
+            >
+              Upload image
+            </button>
+          </div>
+          <div className="mt-4">
+            <p className="text-[10px] text-stone-500">
+              Desaturate ({Math.round((career.heroImageDesaturate ?? 0) * 100)}%)
+            </p>
+            <input
+              className={rangeClass}
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={career.heroImageDesaturate ?? 0}
+              onChange={(event) =>
+                onChangeContent({
+                  ...content,
+                  career: {
+                    ...career,
+                    heroImageDesaturate: Number(event.target.value),
+                  },
+                })
+              }
+            />
+          </div>
+          {uploading ? (
+            <div className="mt-2 space-y-1">
+              <p className="text-[10px] text-stone-400">Uploading...</p>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+                <div
+                  className={`h-full ${
+                    uploadProgress === 100 ? "bg-amber-500" : "bg-stone-400 animate-pulse"
+                  }`}
+                  style={{ width: `${uploadProgress ?? 35}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+          {uploadError ? (
+            <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>
+          ) : null}
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <p className={labelClass}>Media library</p>
+              <button
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={loadAssets}
+                type="button"
+              >
+                Refresh
+              </button>
+            </div>
+            {loadingAssets ? (
+              <p className="mt-2 text-[10px] text-stone-400">Loading...</p>
+            ) : assetError ? (
+              <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
+            ) : (
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+                <div className="grid grid-cols-4 gap-2">
+                  {assets.filter((asset) => isImageUrl(asset.url)).map((asset) => (
+                    <button
+                      key={asset.url}
+                      className="group relative h-16 w-full overflow-hidden rounded-lg border border-stone-200 bg-white"
+                      onClick={() =>
+                        onChangeContent({
+                          ...content,
+                          career: { ...career, heroImageUrl: asset.url },
+                        })
+                      }
+                      onMouseEnter={(event) => handlePreviewEnter(event, asset, "image")}
+                      onMouseMove={handlePreviewMove}
+                      onMouseLeave={handlePreviewLeave}
+                    >
+                      <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button
+              className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+              onClick={() => setLibraryExpanded(true)}
+              type="button"
+            >
+              View library
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const block = content.blocks[target.blockIndex];
     if (!block) {
       return null;
@@ -912,10 +1479,11 @@ export default function InlineEditPanel({
               }
             />
           </label>
-          <label className="mt-3 text-[10px] text-stone-500">
-            Upload video
+          <div className="mt-3">
+            <p className="text-[10px] text-stone-500">Upload video</p>
             <input
-              className="mt-2 w-full text-[11px] text-stone-600"
+              ref={heroUploadInputRef}
+              className="hidden"
               type="file"
               accept="video/*"
               onChange={(event) => {
@@ -927,11 +1495,29 @@ export default function InlineEditPanel({
                     )
                   );
                 }
+                if (heroUploadInputRef.current) heroUploadInputRef.current.value = "";
               }}
             />
-          </label>
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm"
+              onClick={() => heroUploadInputRef.current?.click()}
+            >
+              Upload video
+            </button>
+          </div>
           {uploading ? (
-            <p className="mt-2 text-[10px] text-stone-400">Uploading...</p>
+            <div className="mt-2 space-y-1">
+              <p className="text-[10px] text-stone-400">Uploading...</p>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+                <div
+                  className={`h-full ${
+                    uploadProgress === 100 ? "bg-amber-500" : "bg-stone-400 animate-pulse"
+                  }`}
+                  style={{ width: `${uploadProgress ?? 35}%` }}
+                />
+              </div>
+            </div>
           ) : null}
           {uploadError ? (
             <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>
@@ -982,6 +1568,74 @@ export default function InlineEditPanel({
             >
               View library
             </button>
+          </div>
+          <div className="mt-4 border-t border-stone-200 pt-4">
+            <p className={labelClass}>Hero image (used if no video)</p>
+            <label className="mt-3 text-[10px] text-stone-500">
+              Image URL
+              <input
+                className={inputClass}
+                value={block.data.imageUrl ?? ""}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, { imageUrl: event.target.value })
+                  )
+                }
+              />
+            </label>
+            <div className="mt-3">
+              <p className="text-[10px] text-stone-500">Upload image</p>
+              <input
+                ref={heroImageUploadInputRef}
+                className="hidden"
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    handleUpload(file, (url) =>
+                      onChangeContent(
+                        updateBlock(content, target.blockIndex, { imageUrl: url })
+                      )
+                    );
+                  }
+                  if (heroImageUploadInputRef.current) {
+                    heroImageUploadInputRef.current.value = "";
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-white px-4 py-2 text-[11px] font-semibold text-stone-700 shadow-sm"
+                onClick={() => heroImageUploadInputRef.current?.click()}
+              >
+                Upload image
+              </button>
+            </div>
+            <div className="mt-3 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+              <div className="grid grid-cols-4 gap-2">
+                {assets
+                  .filter((asset) => !isVideoUrl(asset.url))
+                  .map((asset) => (
+                    <button
+                      key={asset.url}
+                      className="group relative h-16 w-full rounded-lg border border-stone-200 bg-white"
+                      onClick={() =>
+                        onChangeContent(
+                          updateBlock(content, target.blockIndex, { imageUrl: asset.url })
+                        )
+                      }
+                      onMouseEnter={(event) => handlePreviewEnter(event, asset, "image")}
+                      onMouseMove={handlePreviewMove}
+                      onMouseLeave={handlePreviewLeave}
+                    >
+                      <div className="h-full w-full overflow-hidden rounded-lg">
+                        <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            </div>
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="text-[10px] text-stone-500">
@@ -1094,6 +1748,191 @@ export default function InlineEditPanel({
       );
     }
 
+    if (target.scope === "heroImage" && block.type === "hero") {
+      const imageX = block.data.imageX ?? block.data.videoX ?? 50;
+      const imageY = block.data.imageY ?? block.data.videoY ?? 50;
+      const imageScale = block.data.imageScale ?? block.data.videoScale ?? 1;
+      return withModal(
+        <>
+          <div className={cardClass}>
+            <div className="flex items-center justify-between">
+              <p className={labelClass}>Hero image</p>
+              {onClear ? (
+                <button
+                  className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                  onClick={onClear}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+            <label className="mt-3 text-[10px] text-stone-500">
+              Image URL
+              <input
+                className={inputClass}
+                value={block.data.imageUrl ?? ""}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, { imageUrl: event.target.value })
+                  )
+                }
+              />
+            </label>
+            <div className="mt-3">
+              <p className="text-[10px] text-stone-500">Upload image</p>
+              <input
+                ref={heroImageUploadInputRef}
+                className="hidden"
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    handleUpload(file, (url) =>
+                      onChangeContent(
+                        updateBlock(content, target.blockIndex, { imageUrl: url })
+                      )
+                    );
+                  }
+                  if (heroImageUploadInputRef.current) {
+                    heroImageUploadInputRef.current.value = "";
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm"
+                onClick={() => heroImageUploadInputRef.current?.click()}
+              >
+                Upload image
+              </button>
+            </div>
+            {uploading ? (
+              <div className="mt-2 space-y-1">
+                <p className="text-[10px] text-stone-400">Uploading...</p>
+                <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+                  <div
+                    className={`h-full ${
+                      uploadProgress === 100
+                        ? "bg-amber-500"
+                        : "bg-stone-400 animate-pulse"
+                    }`}
+                    style={{ width: `${uploadProgress ?? 35}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {uploadError ? (
+              <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>
+            ) : null}
+            <div className="mt-4">
+              <div className="flex items-center justify-between">
+                <p className={labelClass}>Media library</p>
+                <button
+                  className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                  onClick={loadAssets}
+                  type="button"
+                >
+                  Refresh
+                </button>
+              </div>
+              {loadingAssets ? (
+                <p className="mt-2 text-[10px] text-stone-400">Loading...</p>
+              ) : assetError ? (
+                <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
+              ) : (
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+                  <div className="grid grid-cols-4 gap-2">
+                    {assets
+                      .filter((asset) => !isVideoUrl(asset.url))
+                      .map((asset) => (
+                        <button
+                          key={asset.url}
+                          className="group relative h-16 w-full rounded-lg border border-stone-200 bg-white"
+                          onClick={() =>
+                            onChangeContent(
+                              updateBlock(content, target.blockIndex, { imageUrl: asset.url })
+                            )
+                          }
+                          onMouseEnter={(event) => handlePreviewEnter(event, asset, "image")}
+                          onMouseMove={handlePreviewMove}
+                          onMouseLeave={handlePreviewLeave}
+                        >
+                          <div className="h-full w-full overflow-hidden rounded-lg">
+                            <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+              <button
+                className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+                onClick={() => setLibraryExpanded(true)}
+                type="button"
+              >
+                View library
+              </button>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-[10px] text-stone-500">
+                X ({imageX}%)
+                <input
+                  className={rangeClass}
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={imageX}
+                  onChange={(event) =>
+                    onChangeContent(
+                      updateBlock(content, target.blockIndex, {
+                        imageX: Number(event.target.value),
+                      })
+                    )
+                  }
+                />
+              </label>
+              <label className="text-[10px] text-stone-500">
+                Y ({imageY}%)
+                <input
+                  className={rangeClass}
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={imageY}
+                  onChange={(event) =>
+                    onChangeContent(
+                      updateBlock(content, target.blockIndex, {
+                        imageY: Number(event.target.value),
+                      })
+                    )
+                  }
+                />
+              </label>
+            </div>
+            <label className="mt-3 text-[10px] text-stone-500">
+              Scale ({imageScale.toFixed(2)})
+              <input
+                className={rangeClass}
+                type="range"
+                min={0.6}
+                max={8}
+                step={0.02}
+                value={imageScale}
+                onChange={(event) =>
+                  onChangeContent(
+                    updateBlock(content, target.blockIndex, {
+                      imageScale: Number(event.target.value),
+                    })
+                  )
+                }
+              />
+            </label>
+          </div>
+        </>
+      );
+    }
+
     const media: MediaAsset | null =
       target.scope === "middleMedia" && block.type === "triple-media"
         ? block.data.middleMedia
@@ -1186,10 +2025,11 @@ export default function InlineEditPanel({
             onChange={(event) => updateMedia({ ...media, url: event.target.value })}
           />
         </label>
-        <label className="mt-3 text-[10px] text-stone-500">
-          Upload {media.type}
+        <div className="mt-3">
+          <p className="text-[10px] text-stone-500">Upload {media.type}</p>
           <input
-            className="mt-2 w-full text-[11px] text-stone-600"
+            ref={mediaUploadInputRef}
+            className="hidden"
             type="file"
             accept={media.type === "video" ? "video/*" : "image/*"}
             onChange={(event) => {
@@ -1197,11 +2037,29 @@ export default function InlineEditPanel({
               if (file) {
                 handleUpload(file, (url) => updateMedia({ ...media, url }));
               }
+              if (mediaUploadInputRef.current) mediaUploadInputRef.current.value = "";
             }}
           />
-        </label>
+          <button
+            type="button"
+            className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm"
+            onClick={() => mediaUploadInputRef.current?.click()}
+          >
+            Upload {media.type}
+          </button>
+        </div>
         {uploading ? (
-          <p className="mt-2 text-[10px] text-stone-400">Uploading...</p>
+          <div className="mt-2 space-y-1">
+            <p className="text-[10px] text-stone-400">Uploading...</p>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+              <div
+                className={`h-full ${
+                  uploadProgress === 100 ? "bg-amber-500" : "bg-stone-400 animate-pulse"
+                }`}
+                style={{ width: `${uploadProgress ?? 35}%` }}
+              />
+            </div>
+          </div>
         ) : null}
         {uploadError ? (
           <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>
@@ -1452,6 +2310,65 @@ export default function InlineEditPanel({
     );
   }
 
+  if (target.kind === "container") {
+    const career = { ...defaultCareerContent, ...(content.career ?? {}) };
+    const isApply = target.scope === "careerApplyCard";
+    const bgColor = isApply ? career.applyCardBgColor : career.formCardBgColor;
+    const bgOpacity = isApply ? career.applyCardBgOpacity : career.formCardBgOpacity;
+    const textColor = isApply ? career.applyCardTextColor : career.formCardTextColor;
+    const onUpdate = (patch: Partial<typeof career>) =>
+      onChangeContent({ ...content, career: { ...career, ...patch } });
+    return (
+      <div className={cardClass}>
+        <p className={labelClass}>{isApply ? "Apply card" : "Form card"} styles</p>
+        <label className="mt-3 text-[10px] text-stone-500">
+          Background color
+          <input
+            className={inputClass}
+            type="color"
+            value={bgColor}
+            onChange={(event) =>
+              onUpdate({
+                [isApply ? "applyCardBgColor" : "formCardBgColor"]: event.target.value,
+              })
+            }
+          />
+        </label>
+        <label className="mt-3 text-[10px] text-stone-500">
+          Background opacity ({Math.round(bgOpacity * 100)}%)
+          <input
+            className={rangeClass}
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={bgOpacity}
+            onChange={(event) =>
+              onUpdate({
+                [isApply ? "applyCardBgOpacity" : "formCardBgOpacity"]: Number(
+                  event.target.value
+                ),
+              })
+            }
+          />
+        </label>
+        <label className="mt-3 text-[10px] text-stone-500">
+          Text color
+          <input
+            className={inputClass}
+            type="color"
+            value={textColor}
+            onChange={(event) =>
+              onUpdate({
+                [isApply ? "applyCardTextColor" : "formCardTextColor"]: event.target.value,
+              })
+            }
+          />
+        </label>
+      </div>
+    );
+  }
+
   if (target.kind === "text") {
     const block = target.blockIndex !== undefined ? content.blocks[target.blockIndex] : null;
     const label =
@@ -1459,11 +2376,37 @@ export default function InlineEditPanel({
         ? "Logo text"
         : target.scope === "tagline"
           ? "Hero text"
+          : target.scope === "careerHeroEyebrow"
+            ? "Career eyebrow"
+            : target.scope === "careerHeroHeadline"
+              ? "Career headline"
+              : target.scope === "careerHeroBody"
+                ? "Career body"
+                : target.scope === "careerRolesHeading"
+                  ? "Roles heading"
+                  : target.scope === "careerRolesEmpty"
+                    ? "Roles empty text"
+                    : target.scope === "careerApplyHeading"
+                      ? "Apply heading"
+        : target.scope === "careerApplyBody"
+          ? "Apply body"
+          : target.scope === "careerApplyButton"
+            ? "Apply button"
+            : target.scope === "aboutHeroTitle"
+              ? "About hero title"
+              : target.scope === "aboutHeroBody"
+                ? "About hero body"
+                : target.scope === "aboutSectionTitle"
+                  ? "About section title"
+                  : target.scope === "aboutSectionHeading"
+                    ? "Section heading"
+                    : target.scope === "aboutSectionBody"
+                      ? "Section body"
           : target.scope === "brandHeading"
             ? "Brand heading"
             : target.scope === "brandMessage"
               ? "Brand message"
-              : target.scope === "leftTitle"
+            : target.scope === "leftTitle"
                 ? "Left title"
                 : target.scope === "leftBody"
                   ? "Left body"
@@ -1474,7 +2417,14 @@ export default function InlineEditPanel({
                       : "Footer text";
 
     const multiline =
-      target.scope === "brandMessage" || target.scope === "leftBody" || target.scope === "caption";
+      target.scope === "brandMessage" ||
+      target.scope === "leftBody" ||
+      target.scope === "caption" ||
+      target.scope === "careerHeroBody" ||
+      target.scope === "careerApplyBody" ||
+      target.scope === "careerRolesEmpty" ||
+      target.scope === "aboutHeroBody" ||
+      target.scope === "aboutSectionBody";
 
     const visibilityControl = (() => {
       if (target.scope === "logoText") {
@@ -1701,6 +2651,117 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leadButtonText: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leadButtonStyle: next }));
+    } else if (target.scope.startsWith("about")) {
+      const about = { ...defaultAboutContent, ...(content.about ?? {}) };
+      const updateAbout = (next: typeof about) =>
+        onChangeContent({ ...content, about: next });
+      const sectionIndex = target.blockIndex ?? 0;
+      const section = about.sections[sectionIndex];
+      if (target.scope === "aboutHeroTitle") {
+        value = about.heroTitle;
+        onValueChange = (next) => updateAbout({ ...about, heroTitle: next });
+        style = about.heroTitleStyle;
+        onStyleChange = (next) => updateAbout({ ...about, heroTitleStyle: next });
+      } else if (target.scope === "aboutHeroBody") {
+        value = about.heroBody;
+        onValueChange = (next) => updateAbout({ ...about, heroBody: next });
+        style = about.heroBodyStyle;
+        onStyleChange = (next) => updateAbout({ ...about, heroBodyStyle: next });
+      } else if (target.scope === "aboutSectionTitle") {
+        value = about.sectionTitle;
+        onValueChange = (next) => updateAbout({ ...about, sectionTitle: next });
+        style = about.sectionTitleStyle;
+        onStyleChange = (next) => updateAbout({ ...about, sectionTitleStyle: next });
+      } else if (target.scope === "aboutSectionHeading" && section) {
+        value = section.heading;
+        onValueChange = (next) => {
+          const nextSections = about.sections.map((item, index) =>
+            index === sectionIndex ? { ...item, heading: next } : item
+          );
+          updateAbout({ ...about, sections: nextSections });
+        };
+        style = section.headingStyle;
+        onStyleChange = (next) => {
+          const nextSections = about.sections.map((item, index) =>
+            index === sectionIndex ? { ...item, headingStyle: next } : item
+          );
+          updateAbout({ ...about, sections: nextSections });
+        };
+      } else if (target.scope === "aboutSectionBody" && section) {
+        value = section.body;
+        onValueChange = (next) => {
+          const nextSections = about.sections.map((item, index) =>
+            index === sectionIndex ? { ...item, body: next } : item
+          );
+          updateAbout({ ...about, sections: nextSections });
+        };
+        style = section.bodyStyle;
+        onStyleChange = (next) => {
+          const nextSections = about.sections.map((item, index) =>
+            index === sectionIndex ? { ...item, bodyStyle: next } : item
+          );
+          updateAbout({ ...about, sections: nextSections });
+        };
+      }
+    } else if (target.scope.startsWith("career")) {
+      const career = content.career ?? defaultCareerContent;
+      if (target.scope === "careerHeroEyebrow") {
+        value = career.heroEyebrow;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, heroEyebrow: next } });
+        style = career.heroEyebrowStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, heroEyebrowStyle: next } });
+      } else if (target.scope === "careerHeroHeadline") {
+        value = career.heroHeadline;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, heroHeadline: next } });
+        style = career.heroHeadlineStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, heroHeadlineStyle: next } });
+      } else if (target.scope === "careerHeroBody") {
+        value = career.heroBody;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, heroBody: next } });
+        style = career.heroBodyStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, heroBodyStyle: next } });
+      } else if (target.scope === "careerRolesHeading") {
+        value = career.rolesHeading;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, rolesHeading: next } });
+        style = career.rolesHeadingStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, rolesHeadingStyle: next } });
+      } else if (target.scope === "careerRolesEmpty") {
+        value = career.rolesEmptyText;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, rolesEmptyText: next } });
+        style = career.rolesEmptyStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, rolesEmptyStyle: next } });
+      } else if (target.scope === "careerApplyHeading") {
+        value = career.applyHeading;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, applyHeading: next } });
+        style = career.applyHeadingStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, applyHeadingStyle: next } });
+      } else if (target.scope === "careerApplyBody") {
+        value = career.applyBody;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, applyBody: next } });
+        style = career.applyBodyStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, applyBodyStyle: next } });
+      } else if (target.scope === "careerApplyButton") {
+        value = career.applyButtonText;
+        onValueChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, applyButtonText: next } });
+        style = career.applyButtonStyle;
+        onStyleChange = (next) =>
+          onChangeContent({ ...content, career: { ...career, applyButtonStyle: next } });
+      }
     }
 
     const resolvedStyle = ensureTextStyle(style);
@@ -1878,6 +2939,13 @@ export default function InlineEditPanel({
               document.body
             )
           : null}
+        <div className="mt-4">
+          <ColorPicker
+            label="Text color"
+            value={resolvedStyle.color ?? "#1c1917"}
+            onChange={(next) => onStyleChange({ ...resolvedStyle, color: next })}
+          />
+        </div>
         <div className="mt-3 space-y-2">
           <label className="flex items-center gap-2 text-[10px] text-stone-500">
             <input

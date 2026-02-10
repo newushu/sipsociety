@@ -3,34 +3,29 @@ import IntroOverlay from "@/components/IntroOverlay";
 import HomePageShell from "@/components/HomePageShell";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
 import { fontFamilyForKey } from "@/lib/content/fonts";
-import type { FontKey } from "@/lib/content/types";
+import type { TextStyle } from "@/lib/content/types";
 
 export const revalidate = 0;
 
 export default async function Home() {
   const content = await getPublishedContent();
   const globals = await getPublishedGlobals();
-  const styleFrom = (style?: {
-    size: number;
-    weight: number;
-    italic?: boolean;
-    x?: number;
-    y?: number;
-    font?: FontKey;
-  }) =>
+  const styleFrom = (style?: TextStyle) =>
     style
       ? {
-          fontSize: `${style.size}px`,
+          fontSize: style.size ? `${style.size}px` : undefined,
           fontWeight: style.weight,
           fontStyle: style.italic ? "italic" : "normal",
           transform: `translate(${style.x ?? 0}px, ${style.y ?? 0}px)`,
           fontFamily: fontFamilyForKey(style.font),
+          color: style.color,
         }
       : undefined;
 
   return (
     <>
       <IntroOverlay
+        mode="fullscreen"
         logoText={globals.logoText}
         motto={globals.motto}
         logoTextStyle={{
@@ -41,6 +36,12 @@ export default async function Home() {
           ...(styleFrom(globals.mottoStyle) ?? {}),
           fontFamily: fontFamilyForKey(globals.mottoStyle?.font ?? globals.mottoFont),
         }}
+        logoMark={globals.logoMark}
+        logoImageUrl={globals.logoImageUrl}
+        showLogoMark={globals.showLogoMark}
+        logoScale={globals.introLogoScale ?? 1}
+        logoX={globals.introLogoX ?? 0}
+        logoY={globals.introLogoY ?? 0}
         showLogoText={globals.showLogoText}
         enabled={globals.introEnabled}
         bgFrom={globals.introBgFrom}
@@ -51,6 +52,7 @@ export default async function Home() {
         holdMs={globals.introHoldMs}
         wipeMs={globals.introWipeMs}
         fadeMs={globals.introFadeMs}
+        animationType={globals.introAnimationType}
       />
       <HomePageShell
           globals={globals}
@@ -58,10 +60,11 @@ export default async function Home() {
             globals.menuItems?.length
               ? globals.menuItems.map((item) => ({ href: item.href, label: item.label }))
               : [
-                  { href: "#brand", label: "Brand" },
-                  { href: "#media", label: "Media" },
-                  { href: "#landscape", label: "Atmosphere" },
+                  { href: "/about-us", label: "About us" },
                   { href: "/menu", label: "Menu" },
+                  { href: "/gallery", label: "Gallery" },
+                  { href: "/career", label: "Career" },
+                  { href: "/contact-us", label: "Contact us" },
                 ]
           }
         >
