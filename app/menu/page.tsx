@@ -1,4 +1,5 @@
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import { defaultMenuContent } from "@/lib/content/defaults";
 import { normalizeMenuBlock } from "@/lib/content/menu";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
@@ -150,6 +151,23 @@ export default async function MenuPage() {
           </div>
         </div>
       </main>
+      <SiteFooter
+        globals={globals}
+        links={
+          globals.menuItems?.length
+            ? globals.menuItems.map((item) => ({
+                href: item.href.startsWith("#") ? `/${item.href}` : item.href,
+                label: item.label,
+              }))
+            : [
+                { href: "/about-us", label: "About us" },
+                { href: "/menu", label: "Menu" },
+                { href: "/gallery", label: "Gallery" },
+                { href: "/career", label: "Career" },
+                { href: "/contact-us", label: "Contact us" },
+              ]
+        }
+      />
     </div>
   );
 }

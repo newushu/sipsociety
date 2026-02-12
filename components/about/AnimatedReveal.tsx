@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AboutAnimation } from "@/lib/content/types";
@@ -20,6 +21,7 @@ export default function AnimatedReveal({ animation, className, children }: Props
   const [isActive, setIsActive] = useState(anim.type === "none");
   const [isVisible, setIsVisible] = useState(false);
   const elementRef = useRef<HTMLDivElement | null>(null);
+  const resetTimerRef = useRef<number | null>(null);
 
   const style = useMemo<React.CSSProperties>(() => {
     return {
@@ -30,8 +32,13 @@ export default function AnimatedReveal({ animation, className, children }: Props
 
   useEffect(() => {
     if (anim.type === "none") {
-      setIsActive(true);
-      return;
+      if (!isActive) {
+        resetTimerRef.current = window.setTimeout(() => setIsActive(true), 0);
+      }
+      return () => {
+        if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = null;
+      };
     }
     const element = elementRef.current;
     if (!element) return;

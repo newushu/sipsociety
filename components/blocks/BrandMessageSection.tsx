@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { BrandMessageBlock } from "@/lib/content/types";
+import { sanitizeRichHtml } from "@/lib/content/rich";
 
 type Props = {
   block: BrandMessageBlock;
@@ -44,6 +45,8 @@ type Props = {
   logoControls?: React.ReactNode;
   border?: { enabled: boolean; color: string; width: number };
   messageOverride?: string;
+  messageOverrideHtml?: string;
+  messageOverrideRich?: boolean;
   onMessageChange?: (next: string) => void;
   headingStyle?: CSSProperties;
   messageStyle?: CSSProperties;
@@ -76,6 +79,8 @@ export default function BrandMessageSection({
   logoControls,
   border,
   messageOverride,
+  messageOverrideHtml,
+  messageOverrideRich,
   onMessageChange,
   headingStyle,
   messageStyle,
@@ -268,26 +273,27 @@ export default function BrandMessageSection({
         {wrapLink(
           headingLink?.enabled,
           headingLink?.url,
-          onHeadingChange ? (
-            <p
-              data-edit="brandHeading"
-              data-block-index={dataBlockIndex}
-              className="text-xs font-semibold uppercase tracking-[0.35em] text-stone-500 outline outline-1 outline-transparent transition hover:outline-amber-300/70"
-              style={headingStyle}
-              onClick={onHeadingSelect}
-            >
-              {block.data.heading}
-            </p>
-          ) : (
-            <p
-              data-edit="brandHeading"
-              data-block-index={dataBlockIndex}
-              className="text-xs font-semibold uppercase tracking-[0.35em] text-stone-500"
-              style={headingStyle}
-            >
-              {block.data.heading}
-            </p>
-          )
+          (() => {
+            const headingContent =
+              block.data.headingRich && block.data.headingHtml
+                ? { __html: sanitizeRichHtml(block.data.headingHtml) }
+                : null;
+            const className = onHeadingChange
+              ? "text-xs font-semibold uppercase tracking-[0.35em] text-stone-500 outline outline-1 outline-transparent transition hover:outline-amber-300/70"
+              : "text-xs font-semibold uppercase tracking-[0.35em] text-stone-500";
+            return (
+              <p
+                data-edit="brandHeading"
+                data-block-index={dataBlockIndex}
+                className={className}
+                style={headingStyle}
+                onClick={onHeadingChange ? onHeadingSelect : undefined}
+                {...(headingContent ? { dangerouslySetInnerHTML: headingContent } : {})}
+              >
+                {headingContent ? null : block.data.heading}
+              </p>
+            );
+          })()
         )}
       </div>
       <div className="relative z-20 inline-flex flex-col items-center">
@@ -299,26 +305,39 @@ export default function BrandMessageSection({
         {wrapLink(
           messageLink?.enabled,
           messageLink?.url,
-          onMessageChange ? (
-            <h2
-              data-edit="brandMessage"
-              data-block-index={dataBlockIndex}
-              className="max-w-2xl text-2xl font-semibold text-stone-900 outline outline-1 outline-transparent transition hover:outline-amber-300/70 sm:text-3xl"
-              style={messageStyle}
-              onClick={onMessageSelect}
-            >
-              {messageOverride ?? block.data.message}
-            </h2>
-          ) : (
-            <h2
-              data-edit="brandMessage"
-              data-block-index={dataBlockIndex}
-              className="max-w-2xl text-2xl font-semibold text-stone-900 sm:text-3xl"
-              style={messageStyle}
-            >
-              {messageOverride ?? block.data.message}
-            </h2>
-          )
+          (() => {
+            const richEnabled =
+              messageOverrideRich ?? block.data.messageRich ?? false;
+            const html =
+              messageOverrideHtml ?? block.data.messageHtml ?? undefined;
+            const messageBoxStyle: CSSProperties = {
+              ...messageStyle,
+              width: block.data.messageBoxWidthPx
+                ? `${block.data.messageBoxWidthPx}px`
+                : undefined,
+              minHeight: block.data.messageBoxHeightPx
+                ? `${block.data.messageBoxHeightPx}px`
+                : undefined,
+              maxWidth: block.data.messageBoxWidthPx ? undefined : "42rem",
+            };
+            const className = onMessageChange
+              ? "text-2xl font-semibold text-stone-900 outline outline-1 outline-transparent transition hover:outline-amber-300/70 sm:text-3xl"
+              : "text-2xl font-semibold text-stone-900 sm:text-3xl";
+            return (
+              <h2
+                data-edit="brandMessage"
+                data-block-index={dataBlockIndex}
+                className={className}
+                style={messageBoxStyle}
+                onClick={onMessageChange ? onMessageSelect : undefined}
+                {...(richEnabled && html
+                  ? { dangerouslySetInnerHTML: { __html: sanitizeRichHtml(html) } }
+                  : {})}
+              >
+                {richEnabled && html ? null : messageOverride ?? block.data.message}
+              </h2>
+            );
+          })()
         )}
       </div>
     </section>

@@ -15,7 +15,9 @@ type Props = {
 };
 
 const editBadge =
-  "rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-700 shadow-sm opacity-0 transition group-hover:opacity-100";
+  "left-1/2 top-4 -translate-x-1/2 rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-700 shadow-sm opacity-0 transition group-hover:opacity-100";
+const editBadgeCentered =
+  "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-700 shadow-sm opacity-0 transition group-hover:opacity-100";
 
 const animBadge =
   "rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-stone-700 shadow-sm opacity-0 transition group-hover:opacity-100";
@@ -39,6 +41,8 @@ const Editable = ({
   children,
   animTarget,
   animLabel,
+  className,
+  badgeClassName,
 }: {
   label: string;
   target: InlineEditTarget;
@@ -46,9 +50,11 @@ const Editable = ({
   children: React.ReactNode;
   animTarget?: InlineEditTarget;
   animLabel?: string;
+  className?: string;
+  badgeClassName?: string;
 }) => (
   <div
-    className="group relative cursor-pointer"
+    className={`group relative cursor-pointer ${className ?? ""}`}
     onClick={(event) => {
       event.stopPropagation();
       onSelectEdit(target);
@@ -65,7 +71,7 @@ const Editable = ({
   >
     {children}
     <button
-      className={`absolute left-4 top-4 ${editBadge}`}
+      className={`absolute ${badgeClassName ?? editBadge}`}
       onClick={(event) => {
         event.stopPropagation();
         onSelectEdit(target);
@@ -113,23 +119,51 @@ export default function AboutInlinePreview({
   return (
     <HomePageShell globals={globals} links={links} allowOverflow>
       <section className="relative left-1/2 w-screen -translate-x-1/2 min-h-[90vh] overflow-hidden">
-        <Editable
-          label="Edit hero image"
-          target={{ kind: "media", scope: "aboutHeroImage", blockIndex: 0 }}
-          onSelectEdit={onSelectEdit}
+        <div
+          className="absolute inset-0 z-20 cursor-pointer"
+          role="button"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelectEdit({ kind: "media", scope: "aboutHeroImage", blockIndex: 0 });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelectEdit({ kind: "media", scope: "aboutHeroImage", blockIndex: 0 });
+            }
+          }}
         >
-          <div className="absolute inset-0">
-            <img
-              src={about.heroImageUrl}
-              alt="About us"
-              className="h-full w-full object-cover"
-            />
+          <button
+            className={`absolute ${editBadgeCentered} opacity-100`}
+            type="button"
+          >
+            Edit hero media
+          </button>
+        </div>
+        <div className="absolute inset-0 pointer-events-none">
+            {about.heroMediaType === "video" && about.heroVideoUrl ? (
+              <video
+                className="h-full w-full object-cover"
+                src={about.heroVideoUrl}
+                autoPlay
+                muted
+                loop
+                playsInline
+              />
+            ) : (
+              <img
+                src={about.heroImageUrl}
+                alt="About us"
+                className="h-full w-full object-cover"
+              />
+            )}
             <div
               className="absolute inset-0 bg-black"
               style={{ opacity: about.heroOverlayOpacity }}
             />
           </div>
-        </Editable>
         <div className="relative z-10 flex min-h-[90vh] items-center justify-center px-6 py-16">
           <div className="w-full max-w-3xl space-y-6 text-center text-white">
             <Editable

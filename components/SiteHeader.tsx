@@ -50,6 +50,7 @@ export default function SiteHeader({
   menuPanelWidthPct = 25,
   links,
 }: Props) {
+  const menuDisplaySize = Math.max(menuItemSize * 2.4, 36);
   const [open, setOpen] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
@@ -163,38 +164,41 @@ export default function SiteHeader({
                 onClick={(event) => event.stopPropagation()}
                 onPointerDown={(event) => event.stopPropagation()}
               >
-                <div className="flex items-center justify-between border-b border-stone-200 px-6 py-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
-                    Menu
-                  </p>
-                  <button
-                    className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeMenu();
-                    }}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="p-6">
-                  <div className="flex flex-col gap-4">
-                    {links.map((link) => (
-                      <a
-                        key={link.href}
-                        href={link.href}
-                        className="text-lg font-semibold"
-                        onClick={closeMenu}
-                        style={{
-                          color: menuItemColor,
-                          fontFamily: menuItemFont,
-                          fontSize: `${menuItemSize}px`,
-                        }}
-                      >
-                        {link.label}
-                      </a>
-                    ))}
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center justify-between border-b border-stone-200 px-6 py-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
+                      Menu
+                    </p>
+                    <button
+                      className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        closeMenu();
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="flex flex-1 items-center justify-center p-6">
+                    <div className="flex flex-col gap-6 text-center">
+                      {links.map((link) => (
+                        <a
+                          key={link.href}
+                          href={link.href}
+                          className="text-lg font-semibold"
+                          onClick={closeMenu}
+                          style={{
+                            color: menuItemColor,
+                            fontFamily: menuItemFont,
+                            fontSize: `${menuDisplaySize}px`,
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          {link.label}
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </aside>

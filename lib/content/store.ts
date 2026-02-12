@@ -1,6 +1,7 @@
 import {
   defaultAboutContent,
   defaultCareerContent,
+  defaultContactContent,
   defaultContent,
   defaultGlobals,
   defaultGalleryContent,
@@ -13,6 +14,7 @@ const defaultContentBySlug = (slug: string) => {
   if (slug === "menu") return defaultMenuContent;
   if (slug === "gallery") return defaultGalleryContent;
   if (slug === "career") return { ...defaultContent, career: defaultCareerContent };
+  if (slug === "contact-us" || slug === "contactus") return defaultContactContent;
   if (slug === "about-us" || slug === "aboutus")
     return { ...defaultContent, about: defaultAboutContent };
   return defaultContent;
@@ -25,7 +27,14 @@ const normalizeContent = (
   const fallback = defaultContentBySlug(slug);
   if (!content) return fallback;
   if (!content.blocks?.length) {
-    if (slug === "gallery" || slug === "career" || slug === "about-us" || slug === "aboutus") {
+    if (
+      slug === "gallery" ||
+      slug === "career" ||
+      slug === "about-us" ||
+      slug === "aboutus" ||
+      slug === "contact-us" ||
+      slug === "contactus"
+    ) {
       return { ...fallback, ...content };
     }
     return fallback;

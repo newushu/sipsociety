@@ -441,7 +441,7 @@ export default function CareersAdminClient() {
           <p className="text-sm text-stone-600">Signed in as {sessionEmail}.</p>
           <p className="text-sm text-stone-500">
             This account does not have admin access. Update your role in Supabase to
-            "admin".
+            &quot;admin&quot;.
           </p>
           <button
             className="rounded-full border border-stone-200 px-6 py-3 text-sm font-semibold text-stone-900"

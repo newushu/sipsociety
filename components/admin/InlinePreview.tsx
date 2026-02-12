@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ContentBlock, GlobalSettings, PageContent, TextStyle } from "@/lib/content/types";
-import { fontFamilyForKey } from "@/lib/content/fonts";
+import { fontFamilyForKey, fontOptions } from "@/lib/content/fonts";
 import { InlineEditTarget } from "@/components/admin/inlineEditTypes";
+import ColorPalette from "@/components/admin/ColorPalette";
 import BlockRenderer from "@/components/blocks/BlockRenderer";
+import { sanitizeRichHtml } from "@/lib/content/rich";
 
 type Props = {
   content: PageContent;
@@ -80,6 +82,13 @@ const ensureTextStyle = (style?: TextStyle): TextStyle => ({
   y: style?.y ?? 0,
   font: style?.font,
 });
+
+const toPlainText = (html: string) => {
+  if (typeof window === "undefined") return html.replace(/<[^>]*>/g, "");
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div.textContent ?? "";
+};
 
 const mapEditToTarget = (
   edit: string,
@@ -162,9 +171,378 @@ export default function InlinePreview({
     startValueX: number;
     startValue: number;
   } | null>(null);
+  const editableNodeRef = useRef<HTMLElement | null>(null);
+  const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const [toolbarVisible, setToolbarVisible] = useState(false);
+  const [toolbarColor, setToolbarColor] = useState("#ff0000");
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const selectionRef = useRef<Range | null>(null);
+  const toolbarInteractingRef = useRef(false);
+  const pendingTextRef = useRef<{ html: string; text: string } | null>(null);
+  const applyColor = useCallback((color: string) => {
+    if (typeof document === "undefined") return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = selectionRef.current ?? (selection.rangeCount ? selection.getRangeAt(0) : null);
+    if (!range) return;
+    if (
+      !editableNodeRef.current ||
+      !editableNodeRef.current.contains(range.commonAncestorContainer)
+    ) {
+      return;
+    }
+    selection.removeAllRanges();
+    selection.addRange(range);
+    try {
+      const span = document.createElement("span");
+      span.style.color = color;
+      span.style.webkitTextFillColor = color;
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+      selection.removeAllRanges();
+      const nextRange = document.createRange();
+      nextRange.selectNodeContents(span);
+      selection.addRange(nextRange);
+      selectionRef.current = nextRange.cloneRange();
+    } catch {
+      // Ignore range errors.
+    }
+  }, []);
+
+  const rgbToHex = (value: string) => {
+    const match = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (!match) return null;
+    const [r, g, b] = match.slice(1, 4).map((num) => parseInt(num, 10));
+    if ([r, g, b].some((num) => Number.isNaN(num))) return null;
+    return `#${[r, g, b]
+      .map((num) => num.toString(16).padStart(2, "0"))
+      .join("")}`;
+  };
+
+  const applyFontFamily = useCallback((family: string) => {
+    if (typeof document === "undefined") return;
+    const selection = window.getSelection();
+    const range =
+      selectionRef.current ?? (selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (!editableNodeRef.current || !range) return;
+    if (!editableNodeRef.current.contains(range.commonAncestorContainer)) return;
+    try {
+      if (selection && range) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      document.execCommand("styleWithCSS", false, "true");
+      const ok = document.execCommand("fontName", false, family);
+      if (ok && editableNodeRef.current) {
+        pendingTextRef.current = {
+          html: editableNodeRef.current.innerHTML,
+          text: editableNodeRef.current.textContent ?? "",
+        };
+        return;
+      }
+      const span = document.createElement("span");
+      span.style.setProperty("font-family", family, "important");
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+      const nextRange = document.createRange();
+      nextRange.selectNodeContents(span);
+      selection?.removeAllRanges();
+      selection?.addRange(nextRange);
+      selectionRef.current = nextRange.cloneRange();
+      if (editableNodeRef.current) {
+        pendingTextRef.current = {
+          html: editableNodeRef.current.innerHTML,
+          text: editableNodeRef.current.textContent ?? "",
+        };
+      }
+    } catch {
+      // Ignore range errors.
+    }
+  }, []);
+
+  const exec = useCallback((command: string, value?: string) => {
+    if (typeof document === "undefined") return;
+    const selection = window.getSelection();
+    if (selectionRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRef.current);
+    }
+    editableNodeRef.current?.focus();
+    try {
+      if (command === "foreColor" && value) {
+        document.execCommand("styleWithCSS", false, "true");
+        document.execCommand(command, false, value);
+        applyColor(value);
+        setToolbarColor(value);
+        if (editableNodeRef.current) {
+          pendingTextRef.current = {
+            html: editableNodeRef.current.innerHTML,
+            text: editableNodeRef.current.textContent ?? "",
+          };
+        }
+        return;
+      }
+      if (command === "fontName" && value) {
+        applyFontFamily(value);
+        return;
+      }
+      if (command === "fontName") {
+        document.execCommand("styleWithCSS", false, "true");
+      }
+      document.execCommand(command, false, value);
+      if (editableNodeRef.current) {
+        pendingTextRef.current = {
+          html: editableNodeRef.current.innerHTML,
+          text: editableNodeRef.current.textContent ?? "",
+        };
+      }
+    } catch {
+      // Ignore unsupported commands.
+    }
+  }, [applyColor]);
+
+  const getTextAccess = useCallback(
+    (target: InlineEditTarget) => {
+      if (target.kind !== "text") return null;
+      const blockIndex = target.blockIndex ?? 0;
+      const block = content.blocks[blockIndex];
+      const updateBlockData = (patch: Partial<ContentBlock["data"]>) =>
+        updateBlock(content.blocks, blockIndex, {
+          ...block,
+          data: { ...(block as ContentBlock).data, ...patch },
+        } as ContentBlock);
+
+      switch (target.scope) {
+        case "tagline":
+          if (!block || block.type !== "hero") return null;
+          return {
+            rich: block.data.taglineRich ?? false,
+            html: block.data.taglineHtml ?? "",
+            text: block.data.tagline,
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  taglineHtml: next,
+                  tagline: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ tagline: next }),
+              }),
+          };
+        case "brandHeading":
+          if (!block || block.type !== "brand-message") return null;
+          return {
+            rich: block.data.headingRich ?? false,
+            html: block.data.headingHtml ?? "",
+            text: block.data.heading,
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  headingHtml: next,
+                  heading: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ heading: next }),
+              }),
+          };
+        case "brandMessage":
+          if (!block || block.type !== "brand-message") return null;
+          return {
+            rich: true,
+            html: block.data.messageHtml ?? "",
+            text: block.data.message,
+            setHtml: (next: string) => {
+              const plain = toPlainText(next);
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  messageHtml: next,
+                  message: plain,
+                }),
+              });
+            },
+            setText: (next: string) => {
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ message: next }),
+              });
+            },
+          };
+        case "leftTitle":
+          if (!block || block.type !== "triple-media") return null;
+          return {
+            rich: true,
+            html: block.data.leftTitleHtml ?? "",
+            text: block.data.leftTitle,
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  leftTitleHtml: next,
+                  leftTitle: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ leftTitle: next }),
+              }),
+          };
+        case "leftBody":
+          if (!block || block.type !== "triple-media") return null;
+          return {
+            rich: true,
+            html: block.data.leftBodyHtml ?? "",
+            text: block.data.leftBody,
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  leftBodyHtml: next,
+                  leftBody: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ leftBody: next }),
+              }),
+          };
+        case "caption":
+          if (!block || block.type !== "landscape") return null;
+          return {
+            rich: block.data.captionRich ?? false,
+            html: block.data.captionHtml ?? "",
+            text: block.data.caption,
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  captionHtml: next,
+                  caption: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ caption: next }),
+              }),
+          };
+        case "footerLead":
+          if (!block || block.type !== "footer") return null;
+          return {
+            rich: block.data.leadTextRich ?? false,
+            html: block.data.leadTextHtml ?? "",
+            text: block.data.leadText ?? "",
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  leadTextHtml: next,
+                  leadText: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ leadText: next }),
+              }),
+          };
+        case "footerButton":
+          if (!block || block.type !== "footer") return null;
+          return {
+            rich: block.data.leadButtonTextRich ?? false,
+            html: block.data.leadButtonTextHtml ?? "",
+            text: block.data.leadButtonText ?? "",
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  leadButtonTextHtml: next,
+                  leadButtonText: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ leadButtonText: next }),
+              }),
+          };
+        case "footerTagline":
+          if (!block || block.type !== "footer") return null;
+          return {
+            rich: block.data.taglineRich ?? false,
+            html: block.data.taglineHtml ?? "",
+            text: block.data.tagline,
+            setHtml: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({
+                  taglineHtml: next,
+                  tagline: toPlainText(next),
+                }),
+              }),
+            setText: (next: string) =>
+              onChangeContent({
+                ...content,
+                blocks: updateBlockData({ tagline: next }),
+              }),
+          };
+        default:
+          return null;
+      }
+    },
+    [content, globals, onChangeContent, onChangeGlobals]
+  );
+  const resizeRef = useRef<{
+    blockIndex: number;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    mode: "width" | "height";
+  } | null>(null);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
+      if (resizeRef.current) {
+        const { blockIndex, startX, startY, startWidth, startHeight, mode } =
+          resizeRef.current;
+        const block = content.blocks[blockIndex];
+        if (!block || block.type !== "brand-message") return;
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+        const nextWidth =
+          mode === "width"
+            ? clamp(startWidth - deltaX, 240, 5000)
+            : startWidth;
+        const nextHeight =
+          mode === "height"
+            ? clamp(startHeight + deltaY, 80, 5000)
+            : startHeight;
+        onChangeContent({
+          ...content,
+          blocks: updateBlock(content.blocks, blockIndex, {
+            ...block,
+            data: {
+              ...block.data,
+              messageBoxWidthPx: Math.round(nextWidth),
+              messageBoxHeightPx: Math.round(nextHeight),
+            },
+          }),
+        });
+        return;
+      }
       if (!dragRef.current) return;
       const { kind, scope, blockIndex, startX, startY, startValueX, startValue } =
         dragRef.current;
@@ -285,6 +663,7 @@ export default function InlinePreview({
       }
     };
     const handleUp = () => {
+      resizeRef.current = null;
       dragRef.current = null;
       chipDragRef.current = null;
     };
@@ -454,10 +833,165 @@ export default function InlinePreview({
     };
   }, [updateOverlays]);
 
+  useEffect(() => {
+    if (!activeEdit || activeEdit.kind !== "text") {
+      if (editableNodeRef.current) {
+        editableNodeRef.current.removeAttribute("contenteditable");
+        editableNodeRef.current = null;
+      }
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+    const node = container.querySelector<HTMLElement>(
+      `[data-edit=\"${activeEdit.scope}\"][data-block-index=\"${activeEdit.blockIndex}\"]`
+    );
+    const access = getTextAccess(activeEdit);
+    if (!node || !access) return;
+    editableNodeRef.current = node;
+    node.setAttribute("contenteditable", "true");
+    node.setAttribute("spellcheck", "false");
+    if (access.rich && access.html) {
+      node.innerHTML = access.html;
+    } else {
+      node.textContent = access.text;
+    }
+    const handleInput = () => {
+      if (!editableNodeRef.current) return;
+      pendingTextRef.current = {
+        html: editableNodeRef.current.innerHTML,
+        text: editableNodeRef.current.textContent ?? "",
+      };
+    };
+    const handleSelectionUpdate = () => {
+      if (typeof document === "undefined") return;
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      if (!node.contains(range.commonAncestorContainer)) return;
+      selectionRef.current = range.cloneRange();
+    };
+    const handleBlur = () => {
+      if (toolbarInteractingRef.current) {
+        requestAnimationFrame(() => {
+          editableNodeRef.current?.focus();
+        });
+        return;
+      }
+      const pending = pendingTextRef.current;
+      if (pending) {
+        if (access.rich) {
+          access.setHtml(sanitizeRichHtml(pending.html));
+        } else {
+          access.setText(pending.text);
+        }
+      }
+      pendingTextRef.current = null;
+      setToolbarVisible(false);
+    };
+    node.addEventListener("input", handleInput);
+    node.addEventListener("keyup", handleSelectionUpdate);
+    node.addEventListener("mouseup", handleSelectionUpdate);
+    node.addEventListener("blur", handleBlur);
+    node.focus();
+    return () => {
+      node.removeEventListener("input", handleInput);
+      node.removeEventListener("keyup", handleSelectionUpdate);
+      node.removeEventListener("mouseup", handleSelectionUpdate);
+      node.removeEventListener("blur", handleBlur);
+      node.removeAttribute("contenteditable");
+      if (editableNodeRef.current === node) {
+        editableNodeRef.current = null;
+      }
+    };
+  }, [activeEdit, getTextAccess]);
+
+  useEffect(() => {
+    const handleSelection = () => {
+      const node = editableNodeRef.current;
+      const clearSelection = () => {
+        setToolbarVisible(false);
+        window.dispatchEvent(
+          new CustomEvent("admin-richtext-selection", { detail: { active: false } })
+        );
+      };
+      if (!node) {
+        clearSelection();
+        return;
+      }
+      const access = activeEdit ? getTextAccess(activeEdit) : null;
+      if (!access || !access.rich) {
+        clearSelection();
+        return;
+      }
+      const selection = window.getSelection();
+      const activeEl = document.activeElement;
+      if (toolbarRef.current && activeEl && toolbarRef.current.contains(activeEl)) {
+        return;
+      }
+      if (!selection || selection.rangeCount === 0) {
+        clearSelection();
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      if (!node.contains(range.commonAncestorContainer)) {
+        clearSelection();
+        return;
+      }
+      selectionRef.current = range.cloneRange();
+      const colorNode =
+        range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+          ? range.commonAncestorContainer.parentElement
+          : (range.commonAncestorContainer as HTMLElement);
+      if (colorNode) {
+        const computed = window.getComputedStyle(colorNode).color;
+        const hex = rgbToHex(computed);
+        if (hex) setToolbarColor(hex);
+        window.dispatchEvent(
+          new CustomEvent("admin-richtext-selection", {
+            detail: { active: true, color: hex ?? null },
+          })
+        );
+      }
+      const rect = range.getBoundingClientRect();
+      const container = containerRef.current;
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+      setToolbarPos({
+        x: rect.left - containerRect.left,
+        y: rect.top - containerRect.top - 48,
+      });
+      setToolbarVisible(true);
+    };
+    document.addEventListener("selectionchange", handleSelection);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelection);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleCommand = (event: Event) => {
+      if (!activeEdit) return;
+      const access = getTextAccess(activeEdit);
+      if (!access || !access.rich) return;
+      const detail = (event as CustomEvent<{ command: string; value?: string }>).detail;
+      if (!detail?.command) return;
+      exec(detail.command, detail.value);
+    };
+    window.addEventListener("admin-richtext-command", handleCommand as EventListener);
+    return () => {
+      window.removeEventListener("admin-richtext-command", handleCommand as EventListener);
+    };
+  }, [activeEdit, exec, getTextAccess]);
+
   const overlayNodes = showChips
     ? overlays.map((overlay) => {
         const active = activeEdit ? isSameTarget(activeEdit, overlay.target) : false;
         const hovered = hoverId === overlay.id;
+        const allowInteract =
+          !(active && overlay.target.kind === "text") &&
+          overlay.target.scope !== "brandBgVideo" &&
+          overlay.target.scope !== "brandAnimation";
         const highlightClass = `${overlayBoxBase} ${
           active || hovered ? "border-amber-300" : "border-transparent"
         }`;
@@ -473,6 +1007,7 @@ export default function InlinePreview({
                 width: overlay.rect.width,
                 height: overlay.rect.height,
                 touchAction: "none",
+                pointerEvents: allowInteract ? "auto" : "none",
               }}
               onPointerEnter={() => setHoverId(overlay.id)}
               onPointerLeave={() => setHoverId((prev) => (prev === overlay.id ? null : prev))}
@@ -508,6 +1043,55 @@ export default function InlinePreview({
             >
               <span className="sr-only">{overlay.label}</span>
             </button>
+            {overlay.target.kind === "text" &&
+            overlay.target.scope === "brandMessage" ? (
+              <>
+                <button
+                  type="button"
+                  className="absolute z-10 h-8 w-2 cursor-ew-resize rounded-full bg-amber-300/80"
+                  style={{
+                    top: overlay.rect.top + overlay.rect.height / 2 - 16,
+                    left: overlay.rect.left - 6,
+                  }}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    resizeRef.current = {
+                      blockIndex: overlay.target.blockIndex ?? 0,
+                      startX: event.clientX,
+                      startY: event.clientY,
+                      startWidth: overlay.rect.width,
+                      startHeight: overlay.rect.height,
+                      mode: "width",
+                    };
+                  }}
+                >
+                  <span className="sr-only">Resize width</span>
+                </button>
+                <button
+                  type="button"
+                  className="absolute z-10 h-2 w-8 cursor-ns-resize rounded-full bg-amber-300/80"
+                  style={{
+                    top: overlay.rect.top + overlay.rect.height - 6,
+                    left: overlay.rect.left + overlay.rect.width / 2 - 16,
+                  }}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    resizeRef.current = {
+                      blockIndex: overlay.target.blockIndex ?? 0,
+                      startX: event.clientX,
+                      startY: event.clientY,
+                      startWidth: overlay.rect.width,
+                      startHeight: overlay.rect.height,
+                      mode: "height",
+                    };
+                  }}
+                >
+                  <span className="sr-only">Resize height</span>
+                </button>
+              </>
+            ) : null}
             <div
               className="absolute"
               style={{
@@ -552,7 +1136,84 @@ export default function InlinePreview({
     >
       <BlockRenderer blocks={content.blocks} globals={globals} />
       <div className="pointer-events-none absolute inset-0 z-40">
-        <div className="pointer-events-auto">{overlayNodes}</div>
+        {toolbarVisible && toolbarPos ? (
+          <div
+            ref={toolbarRef}
+            className="pointer-events-auto absolute flex flex-wrap items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600 shadow-lg"
+            style={{
+              top: Math.max(8, toolbarPos.y),
+              left: Math.max(8, toolbarPos.x),
+            }}
+            onMouseDown={(event) => {
+              toolbarInteractingRef.current = true;
+              const target = event.target as HTMLElement | null;
+              if (target?.tagName !== "SELECT" && target?.tagName !== "INPUT") {
+                event.preventDefault();
+              }
+            }}
+            onMouseUp={() => {
+              toolbarInteractingRef.current = false;
+            }}
+          >
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => exec("bold")}
+            >
+              Bold
+            </button>
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => exec("italic")}
+            >
+              Italic
+            </button>
+            <div className="max-h-[320px] w-80 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2 shadow-lg">
+              <select
+                className="mb-2 w-full rounded-md border border-stone-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600"
+                onChange={(event) => {
+                  const next = fontOptions.find((opt) => opt.value === event.target.value);
+                  if (!next) return;
+                  exec("fontName", fontFamilyForKey(next.value));
+                }}
+                defaultValue=""
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <option value="">Font</option>
+                {fontOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ColorPalette
+                value={toolbarColor}
+                onChange={(next) => exec("foreColor", next)}
+                label="Highlight color"
+              />
+            </div>
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                const url = window.prompt("Link URL");
+                if (!url) return;
+                exec("createLink", url);
+                exec("underline");
+                exec("foreColor", "#2563eb");
+              }}
+            >
+              Link
+            </button>
+          </div>
+        ) : null}
+        <div
+          className="pointer-events-auto"
+          style={{ pointerEvents: activeEdit?.kind === "text" ? "none" : "auto" }}
+        >
+          {overlayNodes}
+        </div>
       </div>
     </div>
   );

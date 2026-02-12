@@ -1,4 +1,5 @@
 import HomePageShell from "@/components/HomePageShell";
+import SiteFooter from "@/components/SiteFooter";
 import CareerForm from "@/components/careers/CareerForm";
 import { defaultCareerContent } from "@/lib/content/defaults";
 import { fontFamilyForKey } from "@/lib/content/fonts";
@@ -114,6 +115,7 @@ export default async function CareerPage() {
           </div>
         </div>
       </section>
+      <SiteFooter globals={globals} links={links} />
     </HomePageShell>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/immutability */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -7,6 +8,7 @@ import { blockTypes, createBlock } from "@/lib/content/blocks";
 import {
   defaultAboutContent,
   defaultCareerContent,
+  defaultContactContent,
   defaultContent,
   defaultGlobals,
   defaultGalleryContent,
@@ -14,8 +16,11 @@ import {
 } from "@/lib/content/defaults";
 import {
   AdminNoteCategory,
+  AboutContent,
+  ContactContent,
   ContentBlock,
   FontKey,
+  GalleryContent,
   GlobalSettings,
   PageContent,
 } from "@/lib/content/types";
@@ -24,22 +29,33 @@ import InlinePreview from "@/components/admin/InlinePreview";
 import InlineEditPanel from "@/components/admin/InlineEditPanel";
 import CareerInlinePreview from "@/components/admin/CareerInlinePreview";
 import AboutInlinePreview from "@/components/admin/AboutInlinePreview";
+import ContactInlinePreview from "@/components/admin/ContactInlinePreview";
 import MenuInlinePreview from "@/components/admin/MenuInlinePreview";
 import GalleryInlinePreview from "@/components/admin/GalleryInlinePreview";
 import { InlineEditTarget } from "@/components/admin/inlineEditTypes";
 import { createBrowserClient } from "@/lib/supabase/browser";
 import HomePageShell from "@/components/HomePageShell";
 import IntroOverlay from "@/components/IntroOverlay";
-import BlockRenderer from "@/components/blocks/BlockRenderer";
+import { sanitizeRichHtml } from "@/lib/content/rich";
+import RichTextEditor from "@/components/admin/RichTextEditor";
 import { fontFamilyForKey, fontOptions, sortFontOptions } from "@/lib/content/fonts";
+import BlockRenderer from "@/components/blocks/BlockRenderer";
 
 const formInput =
   "w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm";
 
 type HistorySource = "auto" | "draft" | "publish";
-const AUTOSAVE_INTERVAL_MS = 15 * 60 * 1000;
+const AUTOSAVE_INTERVAL_MS = 15 * 1000;
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+const isAbortError = (error: unknown) => {
+  if (!error) return false;
+  if (typeof error !== "object") return false;
+  if ("name" in error && typeof (error as { name?: unknown }).name === "string") {
+    return (error as { name: string }).name === "AbortError";
+  }
+  return false;
+};
 
 export default function AdminClient() {
   const supabase = useMemo(() => createBrowserClient(), []);
@@ -79,11 +95,11 @@ export default function AdminClient() {
   const [showDraftConfirm, setShowDraftConfirm] = useState(false);
   const [draftConfirmChecked, setDraftConfirmChecked] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    if (typeof window === "undefined") return 298;
+    if (typeof window === "undefined") return 420;
     const stored = window.localStorage.getItem("adminSidebarWidth");
-    if (!stored) return 298;
+    if (!stored) return 420;
     const parsed = Number(stored);
-    return Number.isNaN(parsed) ? 298 : parsed;
+    return Number.isNaN(parsed) ? 420 : parsed;
   });
   const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const floatingPanelRef = useRef<HTMLDivElement | null>(null);
@@ -95,6 +111,14 @@ export default function AdminClient() {
   } | null>(null);
   const hideChipsToggleRef = useRef<number | null>(null);
   const [inlineEditTarget, setInlineEditTarget] = useState<InlineEditTarget | null>(null);
+  const handleInlineSelect = useCallback(
+    (target: InlineEditTarget) => {
+      setInlineEditTarget(target);
+      if (panel !== "inline") setPanel("inline");
+      if (!showSidebar) setShowSidebar(true);
+    },
+    [panel, showSidebar]
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
@@ -107,6 +131,13 @@ export default function AdminClient() {
   const [introPreviewKey, setIntroPreviewKey] = useState(0);
   const [introStaticPreview, setIntroStaticPreview] = useState(true);
   const [introRevealMs, setIntroRevealMs] = useState(2000);
+  const [introDetailsOpen, setIntroDetailsOpen] = useState({
+    text: true,
+    basics: true,
+    logo: true,
+    colors: true,
+    timing: true,
+  });
   const [mediaAssets, setMediaAssets] = useState<
     { name: string; url: string; createdAt?: string | null }[]
   >([]);
@@ -157,10 +188,8 @@ export default function AdminClient() {
     if (globals.bodyFont) used.add(globals.bodyFont);
     if (globals.mottoFont) used.add(globals.mottoFont);
     if (globals.brandHeadingFont) used.add(globals.brandHeadingFont);
-    if (globals.brandMessageFont) used.add(globals.brandMessageFont);
     if (globals.logoTextStyle?.font) used.add(globals.logoTextStyle.font);
     if (globals.mottoStyle?.font) used.add(globals.mottoStyle.font);
-    if (globals.brandMessageStyle?.font) used.add(globals.brandMessageStyle.font);
     if (globals.menuButtonFont) used.add(globals.menuButtonFont);
     if (globals.menuItemFont) used.add(globals.menuItemFont);
     content.blocks.forEach((block) => {
@@ -213,6 +242,98 @@ export default function AdminClient() {
   }, [globals.adminNotes]);
 
   const [pageSlugs, setPageSlugs] = useState<string[]>([]);
+  const [hasUnsaved, setHasUnsaved] = useState(false);
+  const [localDraftAvailable, setLocalDraftAvailable] = useState(false);
+  const [localDraftSlug, setLocalDraftSlug] = useState<string | null>(null);
+  const handleAsyncError = useCallback((error: unknown) => {
+    if (isAbortError(error)) return;
+    console.error(error);
+  }, []);
+  const mountedRef = useRef(true);
+  const unsavedGuardRef = useRef<{ slug: string | null; dirty: boolean }>({
+    slug: null,
+    dirty: false,
+  });
+  const contentRef = useRef<PageContent>(content);
+  const editVersionRef = useRef(0);
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+  const localDraftRef = useRef<{ slug: string; content: PageContent } | null>(null);
+  const localDraftKey = useCallback((slug: string) => `adminLocalDraft:${slug}`, []);
+  const readLocalDraft = useCallback(
+    (slug: string) => {
+      if (typeof window === "undefined") return null;
+      const raw = window.localStorage.getItem(localDraftKey(slug));
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw) as { slug?: string; content?: PageContent };
+        if (parsed?.slug !== slug || !parsed?.content) return null;
+        return parsed.content;
+      } catch {
+        return null;
+      }
+    },
+    [localDraftKey]
+  );
+  const persistLocalDraft = useCallback(
+    (slug: string, nextContent: PageContent) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(
+        localDraftKey(slug),
+        JSON.stringify({
+          slug,
+          content: nextContent,
+          updatedAt: new Date().toISOString(),
+        })
+      );
+    },
+    [localDraftKey]
+  );
+  const clearLocalDraft = useCallback(
+    (slug: string) => {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(localDraftKey(slug));
+    },
+    [localDraftKey]
+  );
+  const setContentDirty = useCallback(
+    (next: PageContent | ((prev: PageContent) => PageContent)) => {
+      setContent((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        editVersionRef.current += 1;
+        unsavedGuardRef.current = { slug: activePageSlug, dirty: true };
+        persistLocalDraft(activePageSlug, resolved);
+        setHasUnsaved(true);
+        return resolved;
+      });
+    },
+    [activePageSlug, persistLocalDraft]
+  );
+  const detectLocalDraft = useCallback(
+    (slug: string) => {
+      const cached = readLocalDraft(slug);
+      if (cached) {
+        localDraftRef.current = { slug, content: cached };
+        setLocalDraftAvailable(true);
+        setLocalDraftSlug(slug);
+        return cached;
+      }
+      if (localDraftSlug === slug) {
+        setLocalDraftAvailable(false);
+        setLocalDraftSlug(null);
+        localDraftRef.current = null;
+      }
+      return null;
+    },
+    [localDraftSlug, readLocalDraft]
+  );
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const slugToLabel = (slug: string) =>
     slug
@@ -252,6 +373,7 @@ export default function AdminClient() {
     if (slug === "menu") return defaultMenuContent;
     if (slug === "gallery") return defaultGalleryContent;
     if (slug === "career") return { ...defaultContent, career: defaultCareerContent };
+    if (slug === "contact-us" || slug === "contactus") return defaultContactContent;
     if (slug === "about-us" || slug === "aboutus")
       return { ...defaultContent, about: defaultAboutContent };
     return defaultContent;
@@ -273,6 +395,56 @@ export default function AdminClient() {
   const handleIntroDone = useCallback(() => {
     setIntroPreviewKey(0);
   }, []);
+
+  const toPlainText = (html: string) =>
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]*>/g, "")
+      .replace(/\s+\n/g, "\n")
+      .trim();
+
+  const extractColors = (html: string | undefined) => {
+    if (!html) return [];
+    const matches = html.match(/#[0-9a-fA-F]{3,8}/g) ?? [];
+    return matches.map((color) => color.toLowerCase());
+  };
+
+  const introUsedColors = Array.from(
+    new Set([
+      ...(extractColors(globals.introLogoTextHtml)),
+      ...(extractColors(globals.introMottoHtml)),
+      ...(extractColors(globals.introBodyHtml)),
+      ...(extractColors(globals.introBody2Html)),
+      globals.introTextColor?.toLowerCase() ?? "",
+    ].filter(Boolean))
+  );
+
+  const hasGalleryMedia = (payload?: PageContent) => {
+    const gallery = payload?.gallery;
+    if (!gallery) return false;
+    if (gallery.heroLeft?.url || gallery.heroRight?.url) return true;
+    return (gallery.rows ?? []).some((row) => row.items?.some((item) => item.url));
+  };
+
+  const extractFirstFontFamily = (html: string | undefined, fallback: string) => {
+    if (!html) return fallback;
+    const match = html.match(/font-family\s*:\s*([^;"]+)/i);
+    if (match?.[1]) return match[1].trim();
+    const fontTag = html.match(/face\s*=\s*["']([^"']+)["']/i);
+    if (fontTag?.[1]) return fontTag[1].trim();
+    return fallback;
+  };
+
+  const sampleWords = (html: string | undefined, fallback: string) => {
+    const plain = toPlainText(html ?? fallback);
+    return plain.split(/\s+/).slice(0, 5).join(" ");
+  };
+
+  const resolveIntroValue = (html: string | undefined, fallback: string) => {
+    if (!html) return fallback;
+    return toPlainText(html).length ? html : fallback;
+  };
 
   const noteCategories: { value: AdminNoteCategory; label: string }[] = [
     { value: "style format", label: "Style format" },
@@ -304,6 +476,90 @@ export default function AdminClient() {
   const isAboutPage = activePageSlug === "about-us" || activePageSlug === "aboutus";
   const isMenuPage = activePageSlug === "menu";
   const isGalleryPage = activePageSlug === "gallery";
+  const isContactPage = activePageSlug === "contact-us" || activePageSlug === "contactus";
+
+  const aboutPreviewContent = useMemo(() => {
+    if (!isAboutPage) return content;
+    const publishedAbout = currentPublishedPage?.about;
+    if (!publishedAbout) return content;
+    const draftAbout = (content.about ?? {}) as AboutContent;
+    const merged = { ...publishedAbout, ...draftAbout };
+    if (!draftAbout.heroImageUrl) merged.heroImageUrl = publishedAbout.heroImageUrl;
+    if (!draftAbout.heroLogoUrl) merged.heroLogoUrl = publishedAbout.heroLogoUrl;
+    if (!draftAbout.sections?.length) merged.sections = publishedAbout.sections;
+    return { ...content, about: merged };
+  }, [content, currentPublishedPage, isAboutPage]);
+
+  useEffect(() => {
+    if (!isAboutPage) return;
+    const publishedAbout = currentPublishedPage?.about;
+    if (!publishedAbout?.heroImageUrl) return;
+    const draftAbout = (content.about ?? {}) as AboutContent;
+    if (draftAbout.heroImageUrl) return;
+    setContentDirty({
+      ...content,
+      about: {
+        ...publishedAbout,
+        ...draftAbout,
+        heroImageUrl: publishedAbout.heroImageUrl,
+      },
+    });
+  }, [isAboutPage, currentPublishedPage, content, setContentDirty]);
+
+  useEffect(() => {
+    if (!isContactPage) return;
+    const publishedContact = currentPublishedPage?.contact;
+    if (!publishedContact) return;
+    const draftContact = (content.contact ?? {}) as ContactContent;
+    if (draftContact.backgroundUrl) return;
+    setContentDirty({
+      ...content,
+      contact: {
+        ...publishedContact,
+        ...draftContact,
+        backgroundUrl: publishedContact.backgroundUrl,
+      },
+    });
+  }, [isContactPage, currentPublishedPage, content, setContentDirty]);
+
+  useEffect(() => {
+    if (!isGalleryPage) return;
+    const publishedGallery = currentPublishedPage?.gallery;
+    if (!publishedGallery) return;
+    const draftGallery = (content.gallery ?? {}) as GalleryContent;
+    const mergeRows = (draftRows: typeof publishedGallery.rows | undefined) => {
+      const fallbackRows = publishedGallery.rows ?? [];
+      const rows = (draftRows?.length ? draftRows : fallbackRows).map((row, rowIndex) => {
+        const publishedRow = fallbackRows[rowIndex];
+        const items = (row.items ?? []).map((item, itemIndex) => {
+          if (item.url) return item;
+          const publishedItem = publishedRow?.items?.[itemIndex];
+          return publishedItem?.url ? { ...publishedItem, ...item } : item;
+        });
+        return { ...row, items };
+      });
+      return rows;
+    };
+    let needsMerge = false;
+    const mergedRows = mergeRows(draftGallery.rows);
+    mergedRows.forEach((row, rowIndex) => {
+      row.items?.forEach((item, itemIndex) => {
+        const original = draftGallery.rows?.[rowIndex]?.items?.[itemIndex];
+        if (!original?.url && item.url) needsMerge = true;
+      });
+    });
+    if (!draftGallery.heroLeft?.url && publishedGallery.heroLeft?.url) needsMerge = true;
+    if (!draftGallery.heroRight?.url && publishedGallery.heroRight?.url) needsMerge = true;
+    if (!needsMerge) return;
+    const merged = {
+      ...publishedGallery,
+      ...draftGallery,
+      rows: mergedRows,
+      heroLeft: draftGallery.heroLeft?.url ? draftGallery.heroLeft : publishedGallery.heroLeft,
+      heroRight: draftGallery.heroRight?.url ? draftGallery.heroRight : publishedGallery.heroRight,
+    };
+    setContentDirty({ ...content, gallery: merged });
+  }, [isGalleryPage, currentPublishedPage, content, setContentDirty]);
   const completedNotes = useMemo(() => {
     const notes = (globals.adminNotes ?? []).filter(
       (note) => note.completed && note.completedAt
@@ -381,7 +637,15 @@ export default function AdminClient() {
   }, [supabase]);
 
   const DRAFT_ONLY_SLUGS = useMemo(
-    () => new Set(["home", "menu", "career", "about-us", "gallery"]),
+    () =>
+      new Set([
+        "home",
+        "menu",
+        "career",
+        "about-us",
+        "gallery",
+        "contact-us",
+      ]),
     []
   );
 
@@ -399,6 +663,10 @@ export default function AdminClient() {
       draftData?.map((row) => row.slug).filter((slug): slug is string => Boolean(slug)) ?? [];
     const draftAllow = drafts.filter((slug) => DRAFT_ONLY_SLUGS.has(slug));
     const unique = Array.from(new Set([...published, ...draftAllow]));
+    if (unique.includes("contact-us") && unique.includes("contactus")) {
+      const index = unique.indexOf("contactus");
+      if (index >= 0) unique.splice(index, 1);
+    }
 
     for (const slug of DRAFT_ONLY_SLUGS) {
       if (unique.includes(slug)) continue;
@@ -485,7 +753,7 @@ export default function AdminClient() {
           target_draft: current.published,
           target_source: "publish",
         });
-        await loadHistory();
+        setHistoryLoading(false);
         return;
       }
     } else {
@@ -509,7 +777,7 @@ export default function AdminClient() {
           target_draft: currentGlobals.published,
           target_source: "publish",
         });
-        await loadHistory();
+        setHistoryLoading(false);
         return;
       }
     } else {
@@ -518,7 +786,7 @@ export default function AdminClient() {
     setHistoryLoading(false);
   }, [activePageSlug, supabase]);
 
-  const normalizeSlugFromHref = (href: string) => {
+  const normalizeSlugFromHref = useCallback((href: string) => {
     const trimmed = href.trim();
     if (!trimmed.startsWith("/")) return null;
     if (trimmed.startsWith("//")) return null;
@@ -526,7 +794,7 @@ export default function AdminClient() {
     const [path] = trimmed.split(/[?#]/);
     const slug = path.replace(/^\/+/, "").replace(/\/+$/, "");
     return slug || null;
-  };
+  }, []);
 
   const movePageSlug = useCallback(
     async (fromSlug: string, toSlug: string) => {
@@ -631,7 +899,13 @@ export default function AdminClient() {
 
   const cleanupUnusedPages = useCallback(async (opts?: { confirm?: boolean }) => {
     const shouldConfirm = opts?.confirm ?? true;
-    const keep = new Set(["home", "menu", activePageSlug, ...menuSlugs]);
+    const keep = new Set([
+      "home",
+      "menu",
+      activePageSlug,
+      ...menuSlugs,
+      ...Array.from(DRAFT_ONLY_SLUGS),
+    ]);
     const { data, error } = await supabase.from("pages").select("slug");
     if (error) {
       setStatus(error.message);
@@ -662,7 +936,7 @@ export default function AdminClient() {
     }
     await loadPageList();
     if (shouldConfirm) setStatus(`Removed ${toDelete.length} unused page(s).`);
-  }, [activePageSlug, loadPageList, menuSlugs, supabase]);
+  }, [activePageSlug, loadPageList, menuSlugs, supabase, DRAFT_ONLY_SLUGS]);
 
   useEffect(() => {
     const current = globals.menuItems ?? [];
@@ -674,28 +948,28 @@ export default function AdminClient() {
       const fromSlug = normalizeSlugFromHref(prevHref);
       const toSlug = normalizeSlugFromHref(item.href);
       if (fromSlug && toSlug && fromSlug !== toSlug) {
-        void movePageSlug(fromSlug, toSlug).then(() =>
-          cleanupUnusedPages({ confirm: false })
-        );
+        void movePageSlug(fromSlug, toSlug)
+          .then(() => cleanupUnusedPages({ confirm: false }))
+          .catch(handleAsyncError);
       }
     });
     prevMenuItemsRef.current = current;
-  }, [globals.menuItems, movePageSlug, cleanupUnusedPages]);
+  }, [globals.menuItems, movePageSlug, cleanupUnusedPages, handleAsyncError]);
 
   useEffect(() => {
     if (panel !== "media") return;
     const timer = window.setTimeout(() => {
-      void loadMediaLibrary();
+      void loadMediaLibrary().catch(handleAsyncError);
     }, 0);
     return () => {
       window.clearTimeout(timer);
     };
-  }, [panel, loadMediaLibrary]);
+  }, [panel, loadMediaLibrary, handleAsyncError]);
 
   useEffect(() => {
     if (panel !== "history") return;
-    void loadHistory();
-  }, [panel, loadHistory]);
+    void loadHistory().catch(handleAsyncError);
+  }, [panel, loadHistory, handleAsyncError]);
 
   useEffect(() => {
     historyBackfillRef.current = { page: false, globals: false };
@@ -707,26 +981,123 @@ export default function AdminClient() {
       : "mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10";
 
   const seedDraftFromPublished = useCallback(
-    async (slug: string, payload: PageContent) => {
-      if (autoSeededDraftsRef.current.has(slug)) return;
+    async (slug: string, payload: PageContent, opts?: { force?: boolean }) => {
+      if (!opts?.force && autoSeededDraftsRef.current.has(slug)) return;
       autoSeededDraftsRef.current.add(slug);
       await supabase.from("pages").upsert({
         slug,
-        title: payload.title ?? content.title,
+        title: payload.title ?? slug,
         draft: payload,
         updated_at: new Date().toISOString(),
       });
       setStatus(`Draft seeded from published for /${slug}.`);
     },
-    [content.title, supabase]
+    [supabase]
   );
 
-  useEffect(() => {
-    let mounted = true;
+  const markContentPersisted = (nextContent: PageContent, slug: string) => {
+    lastPersistedContentRef.current = JSON.stringify({
+      content: nextContent,
+      activePageSlug: slug,
+    });
+    unsavedContentRef.current = false;
+    unsavedContentSlugRef.current = slug;
+    unsavedGuardRef.current = { slug, dirty: false };
+    clearLocalDraft(slug);
+    setHasUnsaved(false);
+  };
 
-    const loadSession = async () => {
+  const loadDraft = useCallback(
+    async (slug: string) => {
+      const versionAtStart = editVersionRef.current;
+      const cached = detectLocalDraft(slug);
+      if (cached) {
+        if (slug === "gallery") {
+          clearLocalDraft(slug);
+        } else {
+          setContentDirty(cached);
+          return;
+        }
+      }
+      const shouldSkip = () => {
+        if (slug === "gallery" && !hasGalleryMedia(contentRef.current)) return false;
+        return unsavedGuardRef.current.dirty && unsavedGuardRef.current.slug === slug;
+      };
+      if (shouldSkip()) return;
+      const { data } = await supabase
+        .from("pages")
+        .select("draft,published")
+        .eq("slug", slug)
+        .single();
+      if (!mountedRef.current) return;
+      if (shouldSkip()) return;
+      if (versionAtStart !== editVersionRef.current) return;
+      if (data?.published) {
+        setCurrentPublishedPage(data.published as PageContent);
+      }
+      const draftIsEmptyGallery =
+        slug === "gallery" && data?.draft && !hasGalleryMedia(data.draft as PageContent);
+      if (data?.draft && !draftIsEmptyGallery) {
+        setContent(data.draft as PageContent);
+        return;
+      }
+      if (draftIsEmptyGallery && data?.published) {
+        setContent(data.published as PageContent);
+        await seedDraftFromPublished(slug, data.published as PageContent, { force: true });
+        return;
+      }
+      if (data?.published) {
+        setContent(data.published as PageContent);
+        await seedDraftFromPublished(slug, data.published as PageContent);
+        return;
+      }
+      const { data: publishedData } = await supabase
+        .from("published_pages")
+        .select("content")
+        .eq("slug", slug)
+        .single();
+      if (shouldSkip()) return;
+      if (versionAtStart !== editVersionRef.current) return;
+      if (publishedData?.content) {
+        setCurrentPublishedPage(publishedData.content as PageContent);
+        setContent(publishedData.content as PageContent);
+        await seedDraftFromPublished(slug, publishedData.content as PageContent, {
+          force: slug === "gallery",
+        });
+        return;
+      }
+      if (shouldSkip()) return;
+      if (versionAtStart !== editVersionRef.current) return;
+      setContent(defaultContentForSlug(slug));
+    },
+    [
+      clearLocalDraft,
+      detectLocalDraft,
+      seedDraftFromPublished,
+      setContentDirty,
+      supabase,
+    ]
+  );
+
+  const loadGlobals = useCallback(async () => {
+    const { data } = await supabase
+      .from("global_settings")
+      .select("draft")
+      .eq("key", "site")
+      .single();
+    if (!mountedRef.current) return;
+    if (data?.draft) {
+      setGlobals(data.draft as GlobalSettings);
+    }
+  }, [supabase]);
+
+  const loadSession = useCallback(async () => {
+    try {
+      const hasUnsaved =
+        unsavedGuardRef.current.dirty &&
+        unsavedGuardRef.current.slug === activePageSlug;
       const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
+      if (!mountedRef.current) return;
       const session = data.session;
       setSessionEmail(session?.user?.email ?? null);
       if (!session?.user?.id) {
@@ -742,62 +1113,31 @@ export default function AdminClient() {
         .single();
 
       setRole(profile?.role ?? null);
-      await Promise.all([loadDraft(activePageSlug), loadGlobals(), loadPageList()]);
+      if (!hasUnsaved) {
+        await Promise.all([loadDraft(activePageSlug), loadGlobals(), loadPageList()]);
+      } else {
+        await loadPageList();
+      }
+      if (!mountedRef.current) return;
       setLoading(false);
-    };
+    } catch (error) {
+      handleAsyncError(error);
+      if (!mountedRef.current) return;
+      setLoading(false);
+    }
+  }, [activePageSlug, handleAsyncError, loadDraft, loadGlobals, loadPageList, supabase]);
 
-    const loadDraft = async (slug: string) => {
-      const { data } = await supabase
-        .from("pages")
-        .select("draft,published")
-        .eq("slug", slug)
-        .single();
-      if (!mounted) return;
-      if (data?.draft) {
-        setContent(data.draft as PageContent);
-        return;
-      }
-      if (data?.published) {
-        setContent(data.published as PageContent);
-        await seedDraftFromPublished(slug, data.published as PageContent);
-        return;
-      }
-      const { data: publishedData } = await supabase
-        .from("published_pages")
-        .select("content")
-        .eq("slug", slug)
-        .single();
-      if (publishedData?.content) {
-        setContent(publishedData.content as PageContent);
-        await seedDraftFromPublished(slug, publishedData.content as PageContent);
-        return;
-      }
-      setContent(defaultContentForSlug(slug));
-    };
-
-    const loadGlobals = async () => {
-      const { data } = await supabase
-        .from("global_settings")
-        .select("draft")
-        .eq("key", "site")
-        .single();
-      if (!mounted) return;
-      if (data?.draft) {
-        setGlobals(data.draft as GlobalSettings);
-      }
-    };
-
-    loadSession();
+  useEffect(() => {
+    void loadSession().catch(handleAsyncError);
 
     const { data: authListener } = supabase.auth.onAuthStateChange(() => {
-      loadSession();
+      void loadSession().catch(handleAsyncError);
     });
 
     return () => {
-      mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [supabase, activePageSlug, seedDraftFromPublished]);
+  }, [supabase, loadSession, handleAsyncError]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -808,7 +1148,7 @@ export default function AdminClient() {
     const handleMove = (event: PointerEvent) => {
       if (!sidebarDragRef.current) return;
       const next = sidebarDragRef.current.startWidth + (event.clientX - sidebarDragRef.current.startX);
-      setSidebarWidth(Math.min(420, Math.max(240, next)));
+      setSidebarWidth(Math.min(620, Math.max(320, next)));
     };
     const handleUp = () => {
       sidebarDragRef.current = null;
@@ -902,6 +1242,13 @@ export default function AdminClient() {
   }, [panel]);
 
   useEffect(() => {
+    const cached = readLocalDraft(activePageSlug);
+    if (cached) {
+      setContentDirty(cached);
+    }
+  }, [activePageSlug, readLocalDraft, setContentDirty, showSidebar]);
+
+  useEffect(() => {
     if (!sessionEmail) return;
     const resetTimer = window.setTimeout(() => {
       setStatus(null);
@@ -909,17 +1256,28 @@ export default function AdminClient() {
       setActiveBlockIndex(0);
     }, 0);
     const fetchPage = async () => {
-      if (
-        unsavedContentRef.current &&
-        unsavedContentSlugRef.current === activePageSlug
-      ) {
+      const versionAtStart = editVersionRef.current;
+      const cached = detectLocalDraft(activePageSlug);
+      if (cached) {
+        setContentDirty(cached);
         return;
       }
+      const shouldSkip =
+        unsavedGuardRef.current.dirty &&
+        unsavedGuardRef.current.slug === activePageSlug;
+      if (shouldSkip) return;
       const { data } = await supabase
         .from("pages")
         .select("draft,published")
         .eq("slug", activePageSlug)
         .single();
+      if (
+        unsavedGuardRef.current.dirty &&
+        unsavedGuardRef.current.slug === activePageSlug
+      ) {
+        return;
+      }
+      if (versionAtStart !== editVersionRef.current) return;
       if (data?.draft) {
         setContent(data.draft as PageContent);
         markContentPersisted(data.draft as PageContent, activePageSlug);
@@ -928,7 +1286,9 @@ export default function AdminClient() {
       if (data?.published) {
         setContent(data.published as PageContent);
         markContentPersisted(data.published as PageContent, activePageSlug);
-        await seedDraftFromPublished(activePageSlug, data.published as PageContent);
+        await seedDraftFromPublished(activePageSlug, data.published as PageContent, {
+          force: activePageSlug === "gallery",
+        });
         return;
       }
       const { data: publishedData } = await supabase
@@ -936,21 +1296,45 @@ export default function AdminClient() {
         .select("content")
         .eq("slug", activePageSlug)
         .single();
+      if (
+        unsavedGuardRef.current.dirty &&
+        unsavedGuardRef.current.slug === activePageSlug
+      ) {
+        return;
+      }
+      if (versionAtStart !== editVersionRef.current) return;
       if (publishedData?.content) {
         setContent(publishedData.content as PageContent);
         markContentPersisted(publishedData.content as PageContent, activePageSlug);
-        await seedDraftFromPublished(activePageSlug, publishedData.content as PageContent);
+        await seedDraftFromPublished(activePageSlug, publishedData.content as PageContent, {
+          force: activePageSlug === "gallery",
+        });
         return;
       }
       const fallback = defaultContentForSlug(activePageSlug);
+      if (versionAtStart !== editVersionRef.current) return;
+      if (
+        unsavedGuardRef.current.dirty &&
+        unsavedGuardRef.current.slug === activePageSlug
+      ) {
+        return;
+      }
       setContent(fallback);
       markContentPersisted(fallback, activePageSlug);
     };
-    fetchPage();
+    void fetchPage().catch(handleAsyncError);
     return () => {
       window.clearTimeout(resetTimer);
     };
-  }, [activePageSlug, sessionEmail, supabase, seedDraftFromPublished]);
+  }, [
+    activePageSlug,
+    sessionEmail,
+    supabase,
+    seedDraftFromPublished,
+    handleAsyncError,
+    detectLocalDraft,
+    setContentDirty,
+  ]);
 
   useEffect(() => {
     if (!status) return;
@@ -962,19 +1346,26 @@ export default function AdminClient() {
     if (!role || autoCleanupDoneRef.current) return;
     if (!menuSlugs.length) return;
     autoCleanupDoneRef.current = true;
-    void cleanupUnusedPages({ confirm: false });
-  }, [role, menuSlugs.length, cleanupUnusedPages]);
+    void cleanupUnusedPages({ confirm: false }).catch(handleAsyncError);
+  }, [role, menuSlugs.length, cleanupUnusedPages, handleAsyncError]);
 
   useEffect(() => {
     setUrlDraft(`/${activePageSlug}`);
   }, [activePageSlug]);
+
+  useEffect(() => {
+    if (!sessionEmail) return;
+    void loadDraft(activePageSlug).catch(handleAsyncError);
+  }, [activePageSlug, loadDraft, handleAsyncError, sessionEmail]);
 
   const handleSignIn = async () => {
     setStatus(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setStatus(error.message);
+      return;
     }
+    await loadSession();
   };
 
   const handleSignUp = async () => {
@@ -1049,7 +1440,7 @@ export default function AdminClient() {
   };
 
   const updateBlock = (index: number, updated: ContentBlock) => {
-    setContent((prev) => ({
+    setContentDirty((prev) => ({
       ...prev,
       blocks: prev.blocks.map((block, blockIndex) =>
         blockIndex === index ? updated : block
@@ -1058,14 +1449,14 @@ export default function AdminClient() {
   };
 
   const removeBlock = (index: number) => {
-    setContent((prev) => ({
+    setContentDirty((prev) => ({
       ...prev,
       blocks: prev.blocks.filter((_, blockIndex) => blockIndex !== index),
     }));
   };
 
   const moveBlock = (index: number, direction: "up" | "down") => {
-    setContent((prev) => {
+    setContentDirty((prev) => {
       const nextIndex = direction === "up" ? index - 1 : index + 1;
       if (nextIndex < 0 || nextIndex >= prev.blocks.length) return prev;
       const blocks = [...prev.blocks];
@@ -1077,7 +1468,7 @@ export default function AdminClient() {
   };
 
   const addBlock = () => {
-    setContent((prev) => ({
+    setContentDirty((prev) => ({
       ...prev,
       blocks: [...prev.blocks, createBlock(selectedBlock)],
     }));
@@ -1106,15 +1497,6 @@ export default function AdminClient() {
     return activePageSlug;
   };
 
-  const markContentPersisted = (nextContent: PageContent, slug: string) => {
-    lastPersistedContentRef.current = JSON.stringify({
-      content: nextContent,
-      activePageSlug: slug,
-    });
-    unsavedContentRef.current = false;
-    unsavedContentSlugRef.current = slug;
-  };
-
   const recordHistory = async (
     source: HistorySource,
     slugToSave: string,
@@ -1141,12 +1523,23 @@ export default function AdminClient() {
     }
     setIsSaving(true);
     const slugToSave = await resolveSlugForSave();
+    const publishedGalleryFallback =
+      slugToSave === "gallery" && currentPublishedPage && hasGalleryMedia(currentPublishedPage)
+        ? (currentPublishedPage as PageContent)
+        : null;
+    const contentToSave =
+      slugToSave === "gallery" && publishedGalleryFallback && !hasGalleryMedia(content)
+        ? publishedGalleryFallback
+        : content;
+    if (contentToSave !== content) {
+      setContent(contentToSave);
+    }
     const source = opts?.source ?? "draft";
     const [{ error: pageError }, { error: globalError }] = await Promise.all([
       supabase.from("pages").upsert({
         slug: slugToSave,
-        title: content.title,
-        draft: content,
+        title: contentToSave.title,
+        draft: contentToSave,
         updated_at: new Date().toISOString(),
       }),
       supabase.from("global_settings").upsert({
@@ -1160,11 +1553,11 @@ export default function AdminClient() {
         setStatus(pageError?.message || globalError?.message || "Unable to save draft.");
       }
     } else {
-      await recordHistory(source, slugToSave, content, globals);
-      markContentPersisted(content, slugToSave);
+      await recordHistory(source, slugToSave, contentToSave, globals);
+      markContentPersisted(contentToSave, slugToSave);
       autosaveDirtyRef.current = false;
       autosaveSignatureRef.current = JSON.stringify({
-        content,
+        content: contentToSave,
         globals,
         activePageSlug: slugToSave,
       });
@@ -1174,6 +1567,26 @@ export default function AdminClient() {
     }
     setIsSaving(false);
   };
+
+  const handleToggleSidebar = useCallback(
+    async (next: boolean) => {
+      setShowSidebar(next);
+      const cached = readLocalDraft(activePageSlug) ?? contentRef.current;
+      setContentDirty(cached);
+      window.setTimeout(() => {
+        const refreshed = readLocalDraft(activePageSlug) ?? contentRef.current;
+        setContentDirty(refreshed);
+      }, 0);
+      if (!next) {
+        try {
+          await saveDraft({ source: "draft", silent: true });
+        } catch (error) {
+          handleAsyncError(error);
+        }
+      }
+    },
+    [activePageSlug, handleAsyncError, readLocalDraft, saveDraft, setContentDirty]
+  );
 
   const createDraftFromPublished = async () => {
     setStatus(null);
@@ -1258,6 +1671,7 @@ export default function AdminClient() {
     lastPersistedContentRef.current = null;
     unsavedContentRef.current = false;
     unsavedContentSlugRef.current = null;
+    unsavedGuardRef.current = { slug: null, dirty: false };
     if (autosaveRef.current) {
       window.clearTimeout(autosaveRef.current);
       autosaveRef.current = null;
@@ -1279,7 +1693,11 @@ export default function AdminClient() {
     autosaveRef.current = window.setTimeout(async () => {
       autosaveRef.current = null;
       if (!autosaveDirtyRef.current) return;
-      await saveDraft({ source: "auto", silent: true });
+      try {
+        await saveDraft({ source: "auto", silent: true });
+      } catch (error) {
+        handleAsyncError(error);
+      }
       autosaveDirtyRef.current = false;
     }, AUTOSAVE_INTERVAL_MS);
     return () => {
@@ -1287,7 +1705,16 @@ export default function AdminClient() {
         window.clearTimeout(autosaveRef.current);
       }
     };
-  }, [content, globals, activePageSlug, loading, role, isSaving, isPublishing]);
+  }, [
+    content,
+    globals,
+    activePageSlug,
+    loading,
+    role,
+    isSaving,
+    isPublishing,
+    handleAsyncError,
+  ]);
 
   useEffect(() => {
     const signature = JSON.stringify({ content, activePageSlug });
@@ -1295,17 +1722,23 @@ export default function AdminClient() {
       lastPersistedContentRef.current = signature;
       unsavedContentRef.current = false;
       unsavedContentSlugRef.current = activePageSlug;
+      unsavedGuardRef.current = { slug: activePageSlug, dirty: false };
+      setHasUnsaved(false);
       return;
     }
     if (signature !== lastPersistedContentRef.current) {
       unsavedContentRef.current = true;
       unsavedContentSlugRef.current = activePageSlug;
+      unsavedGuardRef.current = { slug: activePageSlug, dirty: true };
+      persistLocalDraft(activePageSlug, content);
+      setHasUnsaved(true);
+      return;
     }
-  }, [content, activePageSlug]);
+    setHasUnsaved(false);
+  }, [content, activePageSlug, persistLocalDraft]);
 
   const updateBrandMessage = (value: string) => {
-    setGlobals((prev) => ({ ...prev, brandMessage: value }));
-    setContent((prev) => ({
+    setContentDirty((prev) => ({
       ...prev,
       blocks: prev.blocks.map((block) =>
         block.type === "brand-message"
@@ -1382,6 +1815,41 @@ export default function AdminClient() {
   };
 
   const publish = async () => publishWithPayload(content, globals);
+
+  const restoreLocalDraft = useCallback(() => {
+    const cached = localDraftRef.current;
+    if (!cached || cached.slug !== activePageSlug) return;
+    setContentDirty(cached.content);
+    setLocalDraftAvailable(false);
+    setLocalDraftSlug(null);
+  }, [activePageSlug, setContentDirty]);
+
+  const discardLocalDraft = useCallback(() => {
+    if (!activePageSlug) return;
+    clearLocalDraft(activePageSlug);
+    setLocalDraftAvailable(false);
+    setLocalDraftSlug(null);
+    localDraftRef.current = null;
+  }, [activePageSlug, clearLocalDraft]);
+
+  const revertToSaved = useCallback(() => {
+    const raw = lastPersistedContentRef.current;
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        content?: PageContent;
+        activePageSlug?: string;
+      };
+      if (parsed?.content && parsed.activePageSlug === activePageSlug) {
+        setContent(parsed.content);
+        markContentPersisted(parsed.content, activePageSlug);
+        setStatus("Reverted to last saved draft.");
+        return;
+      }
+    } catch {
+      // Ignore invalid persisted value.
+    }
+  }, [activePageSlug]);
 
   const checkLiveSlug = async () => {
     const slug = activePageSlug;
@@ -1486,7 +1954,7 @@ export default function AdminClient() {
           <div className="flex flex-wrap gap-3">
             <button
               className="rounded-full bg-stone-900 px-6 py-3 text-sm font-semibold text-white"
-              onClick={handleSignIn}
+              onClick={() => void handleSignIn().catch(handleAsyncError)}
             >
               Sign in
             </button>
@@ -1537,7 +2005,7 @@ export default function AdminClient() {
         <div className="flex min-h-screen">
           {showSidebar ? (
             <aside
-              className="sticky top-0 z-30 hidden h-screen flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-stone-200 bg-white px-5 py-8 shadow-sm lg:flex"
+              className="sticky top-0 z-[100] hidden h-screen flex-shrink-0 flex-col gap-4 overflow-x-hidden overflow-y-auto border-r border-stone-200 bg-white px-5 py-8 shadow-sm lg:flex"
               style={{
                 width: `${sidebarWidth}px`,
                 minWidth: `${sidebarWidth}px`,
@@ -1632,7 +2100,7 @@ export default function AdminClient() {
               target={inlineEditTarget}
               content={content}
               globals={globals}
-              onChangeContent={setContent}
+              onChangeContent={setContentDirty}
               onChangeGlobals={setGlobals}
               onClear={() => setInlineEditTarget(null)}
             />
@@ -1641,7 +2109,7 @@ export default function AdminClient() {
             <button
               className="w-full rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold"
               onClick={() => {
-                void saveDraft();
+                void saveDraft().catch(handleAsyncError);
               }}
               disabled={isSaving}
             >
@@ -1659,7 +2127,7 @@ export default function AdminClient() {
             </button>
             <button
               className="w-full rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white"
-              onClick={publish}
+              onClick={() => void publish().catch(handleAsyncError)}
               disabled={isPublishing}
             >
               {isPublishing ? "Publishing..." : "Publish"}
@@ -1688,11 +2156,51 @@ export default function AdminClient() {
         </aside>
           ) : null}
 
-        <div className="flex-1">
+        <div className="relative z-0 flex-1">
           <div className={containerClass}>
             {status ? (
               <div className="fixed right-6 top-6 z-[80] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 shadow-lg">
                 {status}
+              </div>
+            ) : null}
+            {panel !== "identity" && (hasUnsaved || localDraftAvailable) ? (
+              <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 text-xs text-stone-700 shadow-sm">
+                {hasUnsaved ? (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+                    Unsaved changes
+                  </span>
+                ) : null}
+                {localDraftAvailable && localDraftSlug === activePageSlug ? (
+                  <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-700">
+                    Local draft available
+                  </span>
+                ) : null}
+                <div className="ml-auto flex flex-wrap gap-2">
+                  {localDraftAvailable && localDraftSlug === activePageSlug ? (
+                    <>
+                      <button
+                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+                        onClick={restoreLocalDraft}
+                      >
+                        Restore local draft
+                      </button>
+                      <button
+                        className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold text-stone-700"
+                        onClick={discardLocalDraft}
+                      >
+                        Discard local draft
+                      </button>
+                    </>
+                  ) : null}
+                  {hasUnsaved ? (
+                    <button
+                      className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold text-stone-700"
+                      onClick={revertToSaved}
+                    >
+                      Revert to last saved
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ) : null}
             {showDraftConfirm && typeof document !== "undefined"
@@ -1725,7 +2233,7 @@ export default function AdminClient() {
                           className="rounded-full bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
                           onClick={() => {
                             setShowDraftConfirm(false);
-                            createDraftFromPublished();
+                            void createDraftFromPublished().catch(handleAsyncError);
                           }}
                           disabled={!draftConfirmChecked}
                           type="button"
@@ -1744,7 +2252,7 @@ export default function AdminClient() {
                     ref={(node) => {
                       floatingPanelRef.current = node;
                     }}
-                    className="fixed z-[2000] w-[320px] max-w-[92vw] rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-2xl backdrop-blur"
+                    className="fixed z-[2000] w-[380px] max-w-[92vw] rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-2xl backdrop-blur"
                     style={{ left: floatingPanelPos.x, top: floatingPanelPos.y }}
                   >
                     <div
@@ -1772,7 +2280,7 @@ export default function AdminClient() {
                         target={inlineEditTarget}
                         content={content}
                         globals={globals}
-                        onChangeContent={setContent}
+                        onChangeContent={setContentDirty}
                         onChangeGlobals={setGlobals}
                         onClear={() => setInlineEditTarget(null)}
                       />
@@ -1799,7 +2307,7 @@ export default function AdminClient() {
                   {!showSidebar ? (
                     <button
                       className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"
-                      onClick={() => setShowSidebar(true)}
+                      onClick={() => void handleToggleSidebar(true)}
                     >
                       Show sidebar
                     </button>
@@ -1807,7 +2315,7 @@ export default function AdminClient() {
                   {showSidebar ? (
                     <button
                       className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm"
-                      onClick={() => setShowSidebar(false)}
+                      onClick={() => void handleToggleSidebar(false)}
                     >
                       Hide sidebar
                     </button>
@@ -2438,9 +2946,9 @@ export default function AdminClient() {
                                     const fromSlug = normalizeSlugFromHref(previous);
                                     const toSlug = normalizedNext;
                                     if (fromSlug && toSlug && fromSlug !== toSlug) {
-                                      void movePageSlug(fromSlug, toSlug).then(() =>
-                                        cleanupUnusedPages({ confirm: false })
-                                      );
+                                      void movePageSlug(fromSlug, toSlug)
+                                        .then(() => cleanupUnusedPages({ confirm: false }))
+                                        .catch(handleAsyncError);
                                     }
                                     if (!toSlug && !isExternal) {
                                       setStatus("URL must start with / and include a path.");
@@ -2543,10 +3051,13 @@ export default function AdminClient() {
                     />
                   </label>
                   <label className="mt-4 block space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Brand message (global)
+                    Brand message
                     <textarea
                       className={`${formInput} min-h-[90px]`}
-                      value={globals.brandMessage ?? ""}
+                      value={
+                        content.blocks.find((block) => block.type === "brand-message")
+                          ?.data?.message ?? ""
+                      }
                       onChange={(event) => updateBrandMessage(event.target.value)}
                     />
                   </label>
@@ -2639,50 +3150,6 @@ export default function AdminClient() {
                         ))}
                       </select>
                     </label>
-                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                      Brand msg size
-                      <input
-                        className={formInput}
-                        type="number"
-                        min={10}
-                        max={80}
-                        value={globals.brandMessageStyle?.size ?? 30}
-                        onChange={(event) =>
-                          setGlobals({
-                            ...globals,
-                            brandMessageStyle: {
-                              size: Number(event.target.value),
-                              weight: globals.brandMessageStyle?.weight ?? 600,
-                              italic: globals.brandMessageStyle?.italic ?? false,
-                              x: globals.brandMessageStyle?.x ?? 0,
-                              y: globals.brandMessageStyle?.y ?? 0,
-                            },
-                          })
-                        }
-                      />
-                      <select
-                        className={formInput}
-                        value={globals.brandMessageStyle?.weight ?? 600}
-                        onChange={(event) =>
-                          setGlobals({
-                            ...globals,
-                            brandMessageStyle: {
-                              size: globals.brandMessageStyle?.size ?? 30,
-                              weight: Number(event.target.value),
-                              italic: globals.brandMessageStyle?.italic ?? false,
-                              x: globals.brandMessageStyle?.x ?? 0,
-                              y: globals.brandMessageStyle?.y ?? 0,
-                            },
-                          })
-                        }
-                      >
-                        {[300, 400, 500, 600, 700].map((w) => (
-                          <option key={w} value={w}>
-                            {w}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                   </div>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
@@ -2732,25 +3199,6 @@ export default function AdminClient() {
                           setGlobals({
                             ...globals,
                             brandHeadingFont: event.target.value as typeof globals.brandHeadingFont,
-                          })
-                        }
-                      >
-                        {sortedFontOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                      Brand message font
-                      <select
-                        className={formInput}
-                        value={globals.brandMessageFont ?? "display"}
-                        onChange={(event) =>
-                          setGlobals({
-                            ...globals,
-                            brandMessageFont: event.target.value as typeof globals.brandMessageFont,
                           })
                         }
                       >
@@ -2865,7 +3313,7 @@ export default function AdminClient() {
                       className={formInput}
                       value={content.title}
                       onChange={(event) =>
-                        setContent({ ...content, title: event.target.value })
+                        setContentDirty({ ...content, title: event.target.value })
                       }
                     />
                   </label>
@@ -2886,7 +3334,7 @@ export default function AdminClient() {
                     </button>
                   </div>
                   <div className="mt-5 overflow-hidden rounded-3xl border border-stone-200">
-                    <div className="relative h-[840px] w-full bg-stone-50">
+                    <div className="relative h-[680px] w-full bg-stone-50">
                       <div className="absolute inset-0">
                         <HomePageShell
                           globals={globals}
@@ -2904,6 +3352,7 @@ export default function AdminClient() {
                                   { href: "/contact-us", label: "Contact us" },
                                 ]
                           }
+                          allowOverflow
                         >
                           <BlockRenderer blocks={content.blocks} globals={globals} />
                         </HomePageShell>
@@ -2912,6 +3361,16 @@ export default function AdminClient() {
                         mode="preview"
                         logoText={globals.logoText}
                         motto={globals.motto}
+                        logoTextHtml={globals.introLogoTextHtml}
+                        logoTextRich={globals.introLogoTextRich}
+                        mottoHtml={globals.introMottoHtml}
+                        mottoRich={globals.introMottoRich}
+                        bodyText={globals.introBody ?? ""}
+                        bodyHtml={globals.introBodyHtml}
+                        bodyRich={globals.introBodyRich}
+                        body2Text={globals.introBody2 ?? ""}
+                        body2Html={globals.introBody2Html}
+                        body2Rich={globals.introBody2Rich}
                         logoTextStyle={{
                           fontSize: `${globals.logoTextStyle?.size ?? 12}px`,
                           fontWeight: globals.logoTextStyle?.weight ?? 600,
@@ -2947,73 +3406,374 @@ export default function AdminClient() {
                         previewRevealMs={introRevealMs}
                         playId={introPreviewKey}
                         onDone={handleIntroDone}
+                        editable
+                        onLogoTextHtmlChange={(next) => {
+                          const safe = sanitizeRichHtml(next);
+                          const plain = toPlainText(safe);
+                          setGlobals({
+                            ...globals,
+                            logoText: plain,
+                            introLogoTextHtml: safe,
+                            introLogoTextRich: true,
+                          });
+                        }}
+                        onMottoHtmlChange={(next) => {
+                          const safe = sanitizeRichHtml(next);
+                          const plain = toPlainText(safe);
+                          setGlobals({
+                            ...globals,
+                            motto: plain,
+                            introMottoHtml: safe,
+                            introMottoRich: true,
+                          });
+                        }}
+                        onBodyHtmlChange={(next) => {
+                          const safe = sanitizeRichHtml(next);
+                          const plain = toPlainText(safe);
+                          setGlobals({
+                            ...globals,
+                            introBody: plain,
+                            introBodyHtml: safe,
+                            introBodyRich: true,
+                          });
+                        }}
+                        onBody2HtmlChange={(next) => {
+                          const safe = sanitizeRichHtml(next);
+                          const plain = toPlainText(safe);
+                          setGlobals({
+                            ...globals,
+                            introBody2: plain,
+                            introBody2Html: safe,
+                            introBody2Rich: true,
+                          });
+                        }}
                       />
                     </div>
                   </div>
-                  <label className="mt-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    <input
-                      type="checkbox"
-                      checked={globals.introEnabled ?? true}
-                      onChange={(event) =>
-                        setGlobals({ ...globals, introEnabled: event.target.checked })
-                      }
-                    />
-                    Intro enabled
-                  </label>
-                  <label className="mt-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    <input
-                      type="checkbox"
-                      checked={introStaticPreview}
-                      onChange={(event) => setIntroStaticPreview(event.target.checked)}
-                    />
-                    Static preview
-                  </label>
-                  <label className="mt-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Reveal (ms)
-                    <input
-                      className={formInput}
-                      type="number"
-                      min={500}
-                      max={8000}
-                      value={introRevealMs}
-                      onChange={(event) => setIntroRevealMs(Number(event.target.value))}
-                    />
-                  </label>
-                  <label className="mt-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                    Animation type
-                    <select
-                      className={formInput}
-                      value={globals.introAnimationType ?? "wipe"}
-                      onChange={(event) =>
-                        setGlobals({
-                          ...globals,
-                          introAnimationType: event.target.value as
-                            | "wipe"
-                            | "fade"
-                            | "slide"
-                            | "radial"
-                            | "pour"
-                            | "iris"
-                            | "diagonal"
-                            | "shutter"
-                            | "steam"
-                            | "dissolve",
-                        })
+                  <div className="mt-4 flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                      Intro controls
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600"
+                        onClick={() =>
+                          setIntroDetailsOpen({
+                            text: false,
+                            basics: false,
+                            logo: false,
+                            colors: false,
+                            timing: false,
+                          })
+                        }
+                      >
+                        Collapse all
+                      </button>
+                      <button
+                        className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600"
+                        onClick={() =>
+                          setIntroDetailsOpen({
+                            text: true,
+                            basics: true,
+                            logo: true,
+                            colors: true,
+                            timing: true,
+                          })
+                        }
+                      >
+                        Expand all
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-4 max-h-[520px] space-y-4 overflow-y-auto pr-2">
+                    <details
+                      className="rounded-2xl border border-stone-200 bg-white p-4"
+                      open={introDetailsOpen.text}
+                      onToggle={(event) =>
+                        setIntroDetailsOpen((prev) => ({
+                          ...prev,
+                          text: (event.target as HTMLDetailsElement).open ?? false,
+                        }))
                       }
                     >
-                      <option value="wipe">Curtain wipe</option>
-                      <option value="fade">Soft fade (reveal)</option>
-                      <option value="slide">Slide up (reveal)</option>
-                      <option value="radial">Radial bloom</option>
-                      <option value="pour">Coffee pour (wave)</option>
-                      <option value="iris">Iris open</option>
-                      <option value="diagonal">Diagonal sweep</option>
-                      <option value="shutter">Shutter blinds</option>
-                      <option value="steam">Steam fade</option>
-                      <option value="dissolve">Grain dissolve</option>
-                    </select>
-                  </label>
-                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Text
+                      </summary>
+                      <div className="mt-4 grid gap-4">
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Logo text
+                          <div className="mt-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <input
+                              type="checkbox"
+                              checked={globals.showLogoText ?? true}
+                              onChange={(event) =>
+                                setGlobals({
+                                  ...globals,
+                                  showLogoText: event.target.checked,
+                                })
+                              }
+                            />
+                            Show in intro
+                          </div>
+                          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <span>Font</span>
+                            <span
+                              className="text-xs normal-case tracking-normal text-stone-700"
+                              style={{
+                                fontFamily: extractFirstFontFamily(
+                                  globals.introLogoTextHtml,
+                                  fontFamilyForKey(
+                                    globals.logoTextStyle?.font ?? globals.bodyFont
+                                  )
+                                ),
+                              }}
+                            >
+                              {sampleWords(globals.introLogoTextHtml, globals.logoText)}
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <RichTextEditor
+                              value={resolveIntroValue(
+                                globals.introLogoTextHtml,
+                                globals.logoText
+                              )}
+                              onChange={(next) => {
+                                const safe = sanitizeRichHtml(next);
+                                const plain = toPlainText(safe);
+                                setGlobals({
+                                  ...globals,
+                                  logoText: plain,
+                                  introLogoTextHtml: safe,
+                                  introLogoTextRich: true,
+                                });
+                              }}
+                              fonts={fontOptions.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                                family: fontFamilyForKey(option.value),
+                              }))}
+                              usedColors={introUsedColors}
+                            />
+                          </div>
+                        </label>
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Motto
+                          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <span>Font</span>
+                            <span
+                              className="text-xs normal-case tracking-normal text-stone-700"
+                              style={{
+                                fontFamily: extractFirstFontFamily(
+                                  globals.introMottoHtml,
+                                  fontFamilyForKey(globals.mottoFont)
+                                ),
+                              }}
+                            >
+                              {sampleWords(globals.introMottoHtml, globals.motto)}
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <RichTextEditor
+                              value={resolveIntroValue(
+                                globals.introMottoHtml,
+                                globals.motto
+                              )}
+                              onChange={(next) => {
+                                const safe = sanitizeRichHtml(next);
+                                const plain = toPlainText(safe);
+                                setGlobals({
+                                  ...globals,
+                                  motto: plain,
+                                  introMottoHtml: safe,
+                                  introMottoRich: true,
+                                });
+                              }}
+                              fonts={fontOptions.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                                family: fontFamilyForKey(option.value),
+                              }))}
+                              usedColors={introUsedColors}
+                            />
+                          </div>
+                        </label>
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Body line 1
+                          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <span>Font</span>
+                            <span
+                              className="text-xs normal-case tracking-normal text-stone-700"
+                              style={{
+                                fontFamily: extractFirstFontFamily(
+                                  globals.introBodyHtml,
+                                  fontFamilyForKey(globals.bodyFont)
+                                ),
+                              }}
+                            >
+                              {sampleWords(globals.introBodyHtml, globals.introBody ?? "")}
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <RichTextEditor
+                              value={resolveIntroValue(
+                                globals.introBodyHtml,
+                                globals.introBody || ""
+                              )}
+                              onChange={(next) => {
+                                const safe = sanitizeRichHtml(next);
+                                const plain = toPlainText(safe);
+                                setGlobals({
+                                  ...globals,
+                                  introBody: plain,
+                                  introBodyHtml: safe,
+                                  introBodyRich: true,
+                                });
+                              }}
+                              fonts={fontOptions.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                                family: fontFamilyForKey(option.value),
+                              }))}
+                              usedColors={introUsedColors}
+                            />
+                          </div>
+                        </label>
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Body line 2 (Come for the ritual…)
+                          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <span>Font</span>
+                            <span
+                              className="text-xs normal-case tracking-normal text-stone-700"
+                              style={{
+                                fontFamily: extractFirstFontFamily(
+                                  globals.introBody2Html,
+                                  fontFamilyForKey(globals.bodyFont)
+                                ),
+                              }}
+                            >
+                              {sampleWords(globals.introBody2Html, globals.introBody2 ?? "")}
+                            </span>
+                          </div>
+                          <div className="mt-2">
+                            <RichTextEditor
+                              value={resolveIntroValue(
+                                globals.introBody2Html,
+                                globals.introBody2 || ""
+                              )}
+                              onChange={(next) => {
+                                const safe = sanitizeRichHtml(next);
+                                const plain = toPlainText(safe);
+                                setGlobals({
+                                  ...globals,
+                                  introBody2: plain,
+                                  introBody2Html: safe,
+                                  introBody2Rich: true,
+                                });
+                              }}
+                              fonts={fontOptions.map((option) => ({
+                                value: option.value,
+                                label: option.label,
+                                family: fontFamilyForKey(option.value),
+                              }))}
+                              usedColors={introUsedColors}
+                            />
+                          </div>
+                        </label>
+                      </div>
+                    </details>
+                    <details
+                      className="rounded-2xl border border-stone-200 bg-white p-4"
+                      open={introDetailsOpen.basics}
+                      onToggle={(event) =>
+                        setIntroDetailsOpen((prev) => ({
+                          ...prev,
+                          basics: (event.target as HTMLDetailsElement).open ?? false,
+                        }))
+                      }
+                    >
+                    <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Intro basics
+                      </summary>
+                      <div className="mt-4 space-y-3">
+                        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          <input
+                            type="checkbox"
+                            checked={globals.introEnabled ?? true}
+                            onChange={(event) =>
+                              setGlobals({ ...globals, introEnabled: event.target.checked })
+                            }
+                          />
+                          Intro enabled
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          <input
+                            type="checkbox"
+                            checked={introStaticPreview}
+                            onChange={(event) => setIntroStaticPreview(event.target.checked)}
+                          />
+                          Static preview
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Reveal (ms)
+                          <input
+                            className={formInput}
+                            type="number"
+                            min={500}
+                            max={8000}
+                            value={introRevealMs}
+                            onChange={(event) => setIntroRevealMs(Number(event.target.value))}
+                          />
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                          Animation type
+                          <select
+                            className={formInput}
+                            value={globals.introAnimationType ?? "wipe"}
+                            onChange={(event) =>
+                              setGlobals({
+                                ...globals,
+                                introAnimationType: event.target.value as
+                                  | "wipe"
+                                  | "fade"
+                                  | "slide"
+                                  | "radial"
+                                  | "pour"
+                                  | "iris"
+                                  | "diagonal"
+                                  | "shutter"
+                                  | "steam"
+                                  | "dissolve",
+                              })
+                            }
+                          >
+                            <option value="wipe">Curtain wipe</option>
+                            <option value="fade">Soft fade (reveal)</option>
+                            <option value="slide">Slide up (reveal)</option>
+                            <option value="radial">Radial bloom</option>
+                            <option value="pour">Coffee pour (wave)</option>
+                            <option value="iris">Iris open</option>
+                            <option value="diagonal">Diagonal sweep</option>
+                            <option value="shutter">Shutter blinds</option>
+                            <option value="steam">Steam fade</option>
+                            <option value="dissolve">Grain dissolve</option>
+                          </select>
+                        </label>
+                      </div>
+                    </details>
+                    <details
+                      className="rounded-2xl border border-stone-200 bg-white p-4"
+                      open={introDetailsOpen.logo}
+                      onToggle={(event) =>
+                        setIntroDetailsOpen((prev) => ({
+                          ...prev,
+                          logo: (event.target as HTMLDetailsElement).open ?? false,
+                        }))
+                      }
+                    >
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Logo position
+                      </summary>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-3">
                     <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                       Logo scale
                       <input
@@ -3063,8 +3823,22 @@ export default function AdminClient() {
                         }
                       />
                     </label>
-                  </div>
-                  <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                      </div>
+                    </details>
+                    <details
+                      className="rounded-2xl border border-stone-200 bg-white p-4"
+                      open={introDetailsOpen.colors}
+                      onToggle={(event) =>
+                        setIntroDetailsOpen((prev) => ({
+                          ...prev,
+                          colors: (event.target as HTMLDetailsElement).open ?? false,
+                        }))
+                      }
+                    >
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Colors
+                      </summary>
+                      <div className="mt-4 grid gap-6 lg:grid-cols-2">
                     <div className="space-y-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                         Background gradient
@@ -3136,8 +3910,22 @@ export default function AdminClient() {
                         </div>
                       ))}
                     </div>
-                  </div>
-                  <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                      </div>
+                    </details>
+                    <details
+                      className="rounded-2xl border border-stone-200 bg-white p-4"
+                      open={introDetailsOpen.timing}
+                      onToggle={(event) =>
+                        setIntroDetailsOpen((prev) => ({
+                          ...prev,
+                          timing: (event.target as HTMLDetailsElement).open ?? false,
+                        }))
+                      }
+                    >
+                      <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                        Timing
+                      </summary>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-3">
                     <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                       Hold (ms)
                       <input
@@ -3186,13 +3974,15 @@ export default function AdminClient() {
                         }
                       />
                     </label>
+                      </div>
+                    </details>
                   </div>
                 </section>
               )}
 
               {panel === "inline" && (
                 <section className="space-y-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-6">
+                  <div className="relative z-60 flex flex-wrap items-center justify-between gap-3 px-6">
                     <div className="flex flex-wrap items-center gap-3">
                       <p className="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">
                         Edit Page
@@ -3231,7 +4021,7 @@ export default function AdminClient() {
                               }));
                               void movePageSlug(oldSlug, nextSlug).then(() =>
                                 cleanupUnusedPages({ confirm: false })
-                              );
+                              ).catch(handleAsyncError);
                             }
                             setUrlDraft(`/${nextSlug}`);
                           }}
@@ -3240,21 +4030,21 @@ export default function AdminClient() {
                       <button
                         className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-700 shadow-sm"
                         onClick={() => {
-                          void cleanupUnusedPages();
+                          void cleanupUnusedPages().catch(handleAsyncError);
                         }}
                       >
                         Clean up URLs
                       </button>
                       <button
                         className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => deletePageSlug(activePageSlug)}
+                        onClick={() => void deletePageSlug(activePageSlug).catch(handleAsyncError)}
                         disabled={["home", "menu"].includes(activePageSlug)}
                       >
                         Delete page
                       </button>
                       <button
                         className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-700 shadow-sm"
-                        onClick={checkLiveSlug}
+                        onClick={() => void checkLiveSlug().catch(handleAsyncError)}
                       >
                         Check live slug
                       </button>
@@ -3315,35 +4105,41 @@ export default function AdminClient() {
                               content={content}
                               globals={globals}
                               positions={careerPreviewPositions}
-                              onSelectEdit={setInlineEditTarget}
+                              onSelectEdit={handleInlineSelect}
                             />
                           ) : isMenuPage ? (
                             <MenuInlinePreview
                               content={content}
                               globals={globals}
-                              onChangeContent={setContent}
+                              onChangeContent={setContentDirty}
                             />
                           ) : isGalleryPage ? (
                             <GalleryInlinePreview
                               content={content}
                               globals={globals}
-                              onChangeContent={setContent}
+                              onChangeContent={setContentDirty}
+                            />
+                          ) : isContactPage ? (
+                            <ContactInlinePreview
+                              content={content}
+                              globals={globals}
+                              onSelectEdit={handleInlineSelect}
                             />
                           ) : isAboutPage ? (
                             <AboutInlinePreview
-                              content={content}
+                              content={aboutPreviewContent}
                               globals={globals}
-                              onSelectEdit={setInlineEditTarget}
-                              onChangeContent={setContent}
+                              onSelectEdit={handleInlineSelect}
+                              onChangeContent={setContentDirty}
                             />
                           ) : (
                             <InlinePreview
                               content={content}
                               globals={globals}
-                              onChangeContent={setContent}
+                              onChangeContent={setContentDirty}
                               onChangeGlobals={setGlobals}
                               activeEdit={inlineEditTarget}
-                              onSelectEdit={setInlineEditTarget}
+                              onSelectEdit={handleInlineSelect}
                               mode={previewMode}
                               layout="frame"
                               showChips={showInlineChips}
@@ -3352,79 +4148,84 @@ export default function AdminClient() {
                         </HomePageShell>
                       </div>
                     ) : (
-                      <div className="my-6 w-full overflow-auto">
-                        <div className="min-w-[1600px]">
-                          <HomePageShell
-                            globals={globals}
-                            links={
-                              globals.menuItems?.length
-                              ? globals.menuItems.map((item) => ({
-                                  href: item.href,
-                                  label: item.label,
-                                }))
-                              : activePageSlug === "menu"
-                                  ? [
-                                      { href: "/about-us", label: "About us" },
-                                      { href: "/menu", label: "Menu" },
-                                      { href: "/gallery", label: "Gallery" },
-                                      { href: "/career", label: "Career" },
-                                      { href: "/contact-us", label: "Contact us" },
-                                    ]
-                                  : [
-                                      { href: "/about-us", label: "About us" },
-                                      { href: "/menu", label: "Menu" },
-                                      { href: "/gallery", label: "Gallery" },
-                                      { href: "/career", label: "Career" },
-                                      { href: "/contact-us", label: "Contact us" },
-                                    ]
-                          }
-                        >
-                            {isCareerPage ? (
-                              <CareerInlinePreview
-                                content={content}
-                                globals={globals}
-                                positions={careerPreviewPositions}
-                                onSelectEdit={setInlineEditTarget}
-                              />
-                            ) : isMenuPage ? (
-                              <MenuInlinePreview
-                                content={content}
-                                globals={globals}
-                                onChangeContent={setContent}
-                              />
-                            ) : isGalleryPage ? (
-                              <GalleryInlinePreview
-                                content={content}
-                                globals={globals}
-                                onChangeContent={setContent}
-                              />
-                            ) : isAboutPage ? (
-                              <AboutInlinePreview
-                                content={content}
-                                globals={globals}
-                                onSelectEdit={setInlineEditTarget}
-                                onChangeContent={setContent}
-                              />
-                            ) : (
-                              <InlinePreview
-                                content={content}
-                                globals={globals}
-                                onChangeContent={setContent}
-                                onChangeGlobals={setGlobals}
-                                activeEdit={inlineEditTarget}
-                                onSelectEdit={setInlineEditTarget}
-                                mode={previewMode}
-                                layout="viewport"
-                                showChips={showInlineChips}
-                              />
-                            )}
-                          </HomePageShell>
-                        </div>
+                      <div className="my-6 w-full">
+                        <HomePageShell
+                          globals={globals}
+                          links={
+                            globals.menuItems?.length
+                            ? globals.menuItems.map((item) => ({
+                                href: item.href,
+                                label: item.label,
+                              }))
+                            : activePageSlug === "menu"
+                                ? [
+                                    { href: "/about-us", label: "About us" },
+                                    { href: "/menu", label: "Menu" },
+                                    { href: "/gallery", label: "Gallery" },
+                                    { href: "/career", label: "Career" },
+                                    { href: "/contact-us", label: "Contact us" },
+                                  ]
+                                : [
+                                    { href: "/about-us", label: "About us" },
+                                    { href: "/menu", label: "Menu" },
+                                    { href: "/gallery", label: "Gallery" },
+                                    { href: "/career", label: "Career" },
+                                    { href: "/contact-us", label: "Contact us" },
+                                  ]
+                        }
+                        allowOverflow
+                      >
+                          {isCareerPage ? (
+                            <CareerInlinePreview
+                              content={content}
+                              globals={globals}
+                              positions={careerPreviewPositions}
+                              onSelectEdit={handleInlineSelect}
+                            />
+                          ) : isMenuPage ? (
+                            <MenuInlinePreview
+                              content={content}
+                              globals={globals}
+                              onChangeContent={setContentDirty}
+                            />
+                          ) : isGalleryPage ? (
+                            <GalleryInlinePreview
+                              content={content}
+                              globals={globals}
+                              onChangeContent={setContentDirty}
+                            />
+                          ) : isContactPage ? (
+                            <ContactInlinePreview
+                              content={content}
+                              globals={globals}
+                              onSelectEdit={handleInlineSelect}
+                            />
+                          ) : isAboutPage ? (
+                            <AboutInlinePreview
+                              content={aboutPreviewContent}
+                              globals={globals}
+                              onSelectEdit={handleInlineSelect}
+                              onChangeContent={setContentDirty}
+                            />
+                          ) : (
+                            <InlinePreview
+                              content={content}
+                              globals={globals}
+                              onChangeContent={setContentDirty}
+                              onChangeGlobals={setGlobals}
+                              activeEdit={inlineEditTarget}
+                              onSelectEdit={handleInlineSelect}
+                              mode={previewMode}
+                              layout="viewport"
+                              showChips={showInlineChips}
+                            />
+                          )}
+                        </HomePageShell>
                       </div>
                     )}
                   </div>
                   <div className="mx-6 rounded-[48px] border border-stone-200 bg-white/80 p-6 shadow-xl shadow-amber-900/10">
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white/80 p-4 text-sm text-stone-600">
+                    <div className="relative z-40 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-white/80 p-4 text-sm text-stone-600">
                       <span>Click the overlay buttons on media to replace or adjust.</span>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -3549,7 +4350,7 @@ export default function AdminClient() {
                       <button
                         className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold shadow-sm"
                         onClick={() => {
-                          void saveDraft();
+                          void saveDraft().catch(handleAsyncError);
                         }}
                         disabled={isSaving}
                       >
@@ -3628,26 +4429,26 @@ export default function AdminClient() {
 
               {panel === "publishing" && (
                 <section className="flex flex-wrap items-center gap-4 rounded-2xl border border-stone-200 bg-white/80 p-5">
-                  <button
-                    className="rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold"
-                    onClick={() => {
-                      void saveDraft();
-                    }}
-                  >
-                    Save draft
-                  </button>
-                  <button
-                    className="rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold"
-                    onClick={createDraftFromPublished}
-                  >
-                    Create draft from published
-                  </button>
-                  <button
-                    className="rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white"
-                    onClick={publish}
-                  >
-                    Publish
-                  </button>
+                    <button
+                      className="rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold"
+                      onClick={() => {
+                        void saveDraft().catch(handleAsyncError);
+                      }}
+                    >
+                      Save draft
+                    </button>
+                    <button
+                      className="rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold"
+                      onClick={() => void createDraftFromPublished().catch(handleAsyncError)}
+                    >
+                      Create draft from published
+                    </button>
+                    <button
+                      className="rounded-full bg-stone-900 px-5 py-2 text-sm font-semibold text-white"
+                      onClick={() => void publish().catch(handleAsyncError)}
+                    >
+                      Publish
+                    </button>
                 </section>
               )}
 
@@ -3664,7 +4465,7 @@ export default function AdminClient() {
                     </div>
                     <button
                       className="rounded-full border border-stone-200 px-4 py-2 text-xs font-semibold"
-                      onClick={loadHistory}
+                      onClick={() => void loadHistory().catch(handleAsyncError)}
                     >
                       Refresh
                     </button>
@@ -3734,7 +4535,7 @@ export default function AdminClient() {
                                   <button
                                     className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold"
                                     onClick={() => {
-                                      setContent(entry.draft);
+                                      setContentDirty(entry.draft);
                                       setStatus("Loaded snapshot into editor.");
                                     }}
                                   >

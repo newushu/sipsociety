@@ -1,11 +1,23 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { sanitizeRichHtml } from "@/lib/content/rich";
 
 type Props = {
   mode?: "fullscreen" | "preview";
   logoText: string;
   motto: string;
+  logoTextHtml?: string;
+  logoTextRich?: boolean;
+  mottoHtml?: string;
+  mottoRich?: boolean;
+  bodyText?: string;
+  bodyHtml?: string;
+  bodyRich?: boolean;
+  body2Text?: string;
+  body2Html?: string;
+  body2Rich?: boolean;
   logoTextStyle?: React.CSSProperties;
   mottoStyle?: React.CSSProperties;
   logoMark?: string;
@@ -39,12 +51,28 @@ type Props = {
   previewRevealMs?: number;
   playId?: number;
   onDone?: () => void;
+  editable?: boolean;
+  onLogoTextHtmlChange?: (next: string) => void;
+  onMottoHtmlChange?: (next: string) => void;
+  onBodyHtmlChange?: (next: string) => void;
+  onBody2HtmlChange?: (next: string) => void;
+  onLogoPositionChange?: (next: { x: number; y: number }) => void;
 };
 
 export default function IntroOverlay({
   mode = "fullscreen",
   logoText,
   motto,
+  logoTextHtml,
+  logoTextRich = false,
+  mottoHtml,
+  mottoRich = false,
+  bodyText,
+  bodyHtml,
+  bodyRich = false,
+  body2Text,
+  body2Html,
+  body2Rich = false,
   logoTextStyle,
   mottoStyle,
   logoMark = "SS",
@@ -68,11 +96,21 @@ export default function IntroOverlay({
   previewRevealMs = 2000,
   playId,
   onDone,
+  editable = false,
+  onLogoTextHtmlChange,
+  onMottoHtmlChange,
+  onBodyHtmlChange,
+  onBody2HtmlChange,
+  onLogoPositionChange,
 }: Props) {
   const [visible, setVisible] = useState(true);
   const [exiting, setExiting] = useState(false);
   const [playing, setPlaying] = useState(false);
   const irisMaskId = useId();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; x: number; y: number } | null>(
+    null
+  );
 
   useEffect(() => {
     if (mode === "preview") return;
@@ -142,8 +180,12 @@ export default function IntroOverlay({
     if (mode !== "preview") return;
     const timers: number[] = [];
     if (staticPreview && !playing) {
-      setVisible(true);
-      setExiting(false);
+      timers.push(
+        window.setTimeout(() => {
+          setVisible(true);
+          setExiting(false);
+        }, 0)
+      );
       return () => {
         timers.forEach((id) => window.clearTimeout(id));
       };
@@ -180,7 +222,6 @@ export default function IntroOverlay({
   const overlayNode = (() => {
     const overlayGradient = `linear-gradient(135deg, ${bgFrom}, ${bgVia}, ${bgTo})`;
     const overlayColorStyle = { backgroundImage: overlayGradient };
-    const overlayWipeStyle = { backgroundColor: wipeColor };
     if (animationType === "fade") {
       return (
         <div
@@ -351,6 +392,17 @@ export default function IntroOverlay({
     color: textColor,
     backgroundColor: "transparent",
   };
+  const safeLogoTextHtml = logoTextHtml ? sanitizeRichHtml(logoTextHtml) : "";
+  const safeMottoHtml = mottoHtml ? sanitizeRichHtml(mottoHtml) : "";
+  const safeBodyHtml = bodyHtml ? sanitizeRichHtml(bodyHtml) : "";
+  const safeBody2Html = body2Html ? sanitizeRichHtml(body2Html) : "";
+  const htmlHasText = (html: string) =>
+    html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .trim().length > 0;
 
   return (
     <div
@@ -361,6 +413,7 @@ export default function IntroOverlay({
     >
       <div className="absolute inset-0 overflow-hidden">{overlayNode}</div>
       <div
+        ref={containerRef}
         className={`relative mx-auto flex w-full max-w-3xl flex-col items-center gap-6 px-6 text-center transition-all ${
           exiting ? "opacity-0 translate-y-16" : "opacity-100 translate-y-0"
         }`}
@@ -371,6 +424,29 @@ export default function IntroOverlay({
             className="flex h-16 w-16 items-center justify-center text-sm font-semibold"
             style={{
               transform: `translate(${logoX}px, ${logoY}px) scale(${logoScale})`,
+            }}
+            onPointerDown={(event) => {
+              if (!editable || !onLogoPositionChange) return;
+              event.preventDefault();
+              const startX = event.clientX;
+              const startY = event.clientY;
+              dragRef.current = { startX, startY, x: logoX, y: logoY };
+              (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!editable || !onLogoPositionChange) return;
+              if (!dragRef.current) return;
+              const dx = event.clientX - dragRef.current.startX;
+              const dy = event.clientY - dragRef.current.startY;
+              onLogoPositionChange({
+                x: dragRef.current.x + dx,
+                y: dragRef.current.y + dy,
+              });
+            }}
+            onPointerUp={(event) => {
+              if (!editable || !onLogoPositionChange) return;
+              dragRef.current = null;
+              (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
             }}
           >
             {logoImageUrl ? (
@@ -384,19 +460,73 @@ export default function IntroOverlay({
             )}
           </div>
         ) : null}
+        <h1
+          className="text-4xl font-semibold leading-tight sm:text-5xl"
+          style={mottoStyle}
+          contentEditable={editable}
+          suppressContentEditableWarning
+          onInput={(event) => {
+            if (!editable || !onMottoHtmlChange) return;
+            const next = (event.currentTarget as HTMLElement).innerHTML;
+            onMottoHtmlChange(next);
+          }}
+          {...(mottoRich && safeMottoHtml && htmlHasText(safeMottoHtml)
+            ? { dangerouslySetInnerHTML: { __html: safeMottoHtml } }
+            : {})}
+        >
+          {mottoRich && safeMottoHtml && htmlHasText(safeMottoHtml) ? null : motto}
+        </h1>
         {showLogoText ? (
           <p
             className="text-xs font-semibold uppercase tracking-[0.4em]"
             style={logoTextStyle}
+            contentEditable={editable}
+            suppressContentEditableWarning
+            onInput={(event) => {
+              if (!editable || !onLogoTextHtmlChange) return;
+              const next = (event.currentTarget as HTMLElement).innerHTML;
+              onLogoTextHtmlChange(next);
+            }}
+            {...(logoTextRich && safeLogoTextHtml && htmlHasText(safeLogoTextHtml)
+              ? { dangerouslySetInnerHTML: { __html: safeLogoTextHtml } }
+              : {})}
           >
-            {logoText}
+            {logoTextRich && safeLogoTextHtml && htmlHasText(safeLogoTextHtml)
+              ? null
+              : logoText}
           </p>
         ) : null}
-        <h1 className="text-4xl font-semibold leading-tight sm:text-5xl" style={mottoStyle}>
-          {motto}
-        </h1>
-        <p className="max-w-xl text-base sm:text-lg">
-          A modern coffee and tea collective for makers, listeners, and late-night sketches.
+        <p
+          className="max-w-xl text-base sm:text-lg"
+          contentEditable={editable}
+          suppressContentEditableWarning
+          onInput={(event) => {
+            if (!editable || !onBodyHtmlChange) return;
+            const next = (event.currentTarget as HTMLElement).innerHTML;
+            onBodyHtmlChange(next);
+          }}
+          {...(bodyRich && safeBodyHtml && htmlHasText(safeBodyHtml)
+            ? { dangerouslySetInnerHTML: { __html: safeBodyHtml } }
+            : {})}
+        >
+          {bodyRich && safeBodyHtml && htmlHasText(safeBodyHtml) ? null : bodyText}
+        </p>
+        <p
+          className="max-w-xl text-base sm:text-lg"
+          contentEditable={editable}
+          suppressContentEditableWarning
+          onInput={(event) => {
+            if (!editable || !onBody2HtmlChange) return;
+            const next = (event.currentTarget as HTMLElement).innerHTML;
+            onBody2HtmlChange(next);
+          }}
+          {...(body2Rich && safeBody2Html && htmlHasText(safeBody2Html)
+            ? { dangerouslySetInnerHTML: { __html: safeBody2Html } }
+            : {})}
+        >
+          {body2Rich && safeBody2Html && htmlHasText(safeBody2Html)
+            ? null
+            : body2Text}
         </p>
       </div>
     </div>

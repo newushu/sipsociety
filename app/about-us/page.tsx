@@ -1,5 +1,6 @@
 import HomePageShell from "@/components/HomePageShell";
 import AnimatedReveal from "@/components/about/AnimatedReveal";
+import SiteFooter from "@/components/SiteFooter";
 import { defaultAboutContent } from "@/lib/content/defaults";
 import { getPublishedContentOrNull, getPublishedGlobals } from "@/lib/content/store";
 import { fontFamilyForKey } from "@/lib/content/fonts";
@@ -43,11 +44,22 @@ export default async function AboutPage() {
     <HomePageShell globals={globals} links={links} allowOverflow>
       <section className="relative left-1/2 w-screen -translate-x-1/2 min-h-[90vh] overflow-hidden">
         <div className="absolute inset-0">
-          <img
-            src={about.heroImageUrl}
-            alt="About us"
-            className="h-full w-full object-cover"
-          />
+          {about.heroMediaType === "video" && about.heroVideoUrl ? (
+            <video
+              className="h-full w-full object-cover"
+              src={about.heroVideoUrl}
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+          ) : (
+            <img
+              src={about.heroImageUrl}
+              alt="About us"
+              className="h-full w-full object-cover"
+            />
+          )}
           <div
             className="absolute inset-0 bg-black"
             style={{ opacity: about.heroOverlayOpacity }}
@@ -144,6 +156,8 @@ export default async function AboutPage() {
           })}
         </div>
       </section>
+
+      <SiteFooter globals={globals} links={links} />
     </HomePageShell>
   );
 }

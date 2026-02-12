@@ -1,5 +1,6 @@
 import BlockRenderer from "@/components/blocks/BlockRenderer";
 import HomePageShell from "@/components/HomePageShell";
+import SiteFooter from "@/components/SiteFooter";
 import { getPublishedContentOrNull, getPublishedGlobals } from "@/lib/content/store";
 import { redirect } from "next/navigation";
 
@@ -74,6 +75,17 @@ export default async function DynamicPage({ params, searchParams }: Props) {
       }
     >
       <BlockRenderer blocks={content.blocks} globals={globals} />
+      <SiteFooter
+        globals={globals}
+        links={
+          globals.menuItems?.length
+            ? globals.menuItems.map((item) => ({
+                href: item.href.startsWith("#") ? `/${item.href}` : item.href,
+                label: item.label,
+              }))
+            : fallbackLinks
+        }
+      />
     </HomePageShell>
   );
 }

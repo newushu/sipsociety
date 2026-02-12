@@ -129,6 +129,8 @@ export type HeroBlock = {
     videoLinkEnabled?: boolean;
     videoLinkUrl?: string;
     tagline: string;
+    taglineHtml?: string;
+    taglineRich?: boolean;
     showTagline?: boolean;
     taglineStyle?: TextStyle;
     taglineLinkEnabled?: boolean;
@@ -160,15 +162,21 @@ export type BrandMessageBlock = {
     bgVideoFeather?: number;
     bgVideoDesaturate?: number;
     heading: string;
+    headingHtml?: string;
+    headingRich?: boolean;
     showHeading?: boolean;
     headingStyle?: TextStyle;
     headingLinkEnabled?: boolean;
     headingLinkUrl?: string;
     message: string;
+    messageHtml?: string;
+    messageRich?: boolean;
     showMessage?: boolean;
     messageStyle?: TextStyle;
     messageLinkEnabled?: boolean;
     messageLinkUrl?: string;
+    messageBoxWidthPx?: number;
+    messageBoxHeightPx?: number;
     icon: "coffee";
     logoScale?: number;
     logoBoxScale?: number;
@@ -187,16 +195,21 @@ export type TripleMediaBlock = {
   type: "triple-media";
   data: {
     leftTitle: string;
+    leftTitleHtml?: string;
+    leftTitleRich?: boolean;
     leftTitleStyle?: TextStyle;
     leftTitleLinkEnabled?: boolean;
     leftTitleLinkUrl?: string;
     leftBody: string;
+    leftBodyHtml?: string;
+    leftBodyRich?: boolean;
     leftBodyStyle?: TextStyle;
     leftBodyLinkEnabled?: boolean;
     leftBodyLinkUrl?: string;
     leftAccent: string;
     leftLogoScale?: number;
     leftLogoBoxScale?: number;
+    leftLogoMaxPx?: number;
     leftLogoX?: number;
     leftLogoY?: number;
     leftLogoLinkEnabled?: boolean;
@@ -214,6 +227,8 @@ export type LandscapeBlock = {
   data: {
     media: MediaAsset;
     caption: string;
+    captionHtml?: string;
+    captionRich?: boolean;
     captionStyle?: TextStyle;
     captionLinkEnabled?: boolean;
     captionLinkUrl?: string;
@@ -225,6 +240,8 @@ export type FooterBlock = {
   type: "footer";
   data: {
     tagline: string;
+    taglineHtml?: string;
+    taglineRich?: boolean;
     showTagline?: boolean;
     taglineStyle?: TextStyle;
     taglineLinkEnabled?: boolean;
@@ -233,9 +250,13 @@ export type FooterBlock = {
     links: { label: string; href: string }[];
     joinLabel?: string;
     leadText?: string;
+    leadTextHtml?: string;
+    leadTextRich?: boolean;
     leadStyle?: TextStyle;
     leadPlaceholder?: string;
     leadButtonText?: string;
+    leadButtonTextHtml?: string;
+    leadButtonTextRich?: boolean;
     leadButtonStyle?: TextStyle;
     showLeadLogo?: boolean;
   };
@@ -257,12 +278,14 @@ export type PageContent = {
   career?: CareerContent;
   about?: AboutContent;
   gallery?: GalleryContent;
+  contact?: ContactContent;
 };
 
 export type GalleryItem = {
   id: string;
   url?: string;
   alt?: string;
+  assetKey?: string;
   comment?: string;
   commentDisplay?: "hover" | "always";
 };
@@ -277,6 +300,8 @@ export type GalleryContent = {
   subheading: string;
   headingStyle?: TextStyle;
   subheadingStyle?: TextStyle;
+  heroLeft?: MediaAsset;
+  heroRight?: MediaAsset;
   rows: GalleryRow[];
   commentX: number;
   commentY: number;
@@ -286,6 +311,30 @@ export type GalleryContent = {
   commentOpacity?: number;
   tileGap?: number;
   favoriteThreshold?: number;
+};
+
+export type ContactContent = {
+  backgroundUrl: string;
+  backgroundType?: "image" | "video";
+  backgroundX?: number;
+  backgroundY?: number;
+  backgroundScale?: number;
+  heading: string;
+  body: string;
+  label: string;
+  placeholder: string;
+  messageLabel: string;
+  messagePlaceholder: string;
+  buttonText: string;
+  headingStyle?: TextStyle;
+  bodyStyle?: TextStyle;
+  labelStyle?: TextStyle;
+  buttonStyle?: TextStyle;
+  boxColor: string;
+  boxOpacity: number;
+  boxTextColor: string;
+  buttonColor: string;
+  buttonTextColor: string;
 };
 
 export type CareerContent = {
@@ -353,6 +402,8 @@ export type AboutSection = {
 
 export type AboutContent = {
   heroImageUrl: string;
+  heroVideoUrl?: string;
+  heroMediaType?: "image" | "video";
   heroOverlayOpacity: number;
   heroLogoUrl: string;
   heroLogoScale: number;
@@ -385,6 +436,8 @@ export type GlobalSettings = {
   brandMessageFont?: FontKey;
   motto: string;
   brandMessage?: string;
+  brandMessageHtml?: string;
+  brandMessageRich?: boolean;
   logoTextStyle?: TextStyle;
   mottoStyle?: TextStyle;
   brandMessageStyle?: TextStyle;
@@ -414,6 +467,16 @@ export type GlobalSettings = {
   introLogoScale?: number;
   introLogoX?: number;
   introLogoY?: number;
+  introLogoTextHtml?: string;
+  introLogoTextRich?: boolean;
+  introMottoHtml?: string;
+  introMottoRich?: boolean;
+  introBody?: string;
+  introBodyHtml?: string;
+  introBodyRich?: boolean;
+  introBody2?: string;
+  introBody2Html?: string;
+  introBody2Rich?: boolean;
   menuButtonText?: string;
   menuButtonTextColor?: string;
   menuButtonBorderColor?: string;

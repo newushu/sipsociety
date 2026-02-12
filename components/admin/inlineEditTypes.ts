@@ -17,7 +17,8 @@ export type InlineEditTarget =
         | "careerHeroImage"
         | "aboutHeroImage"
         | "aboutHeroLogo"
-        | "aboutSectionMedia";
+        | "aboutSectionMedia"
+        | "contactBackground";
       blockIndex: number;
     }
   | {
@@ -45,12 +46,19 @@ export type InlineEditTarget =
         | "aboutHeroBody"
         | "aboutSectionTitle"
         | "aboutSectionHeading"
-        | "aboutSectionBody";
+        | "aboutSectionBody"
+        | "contactHeading"
+        | "contactBody"
+        | "contactLabel"
+        | "contactPlaceholder"
+        | "contactMessageLabel"
+        | "contactMessagePlaceholder"
+        | "contactButton";
       blockIndex?: number;
     }
   | {
       kind: "container";
-      scope: "careerApplyCard" | "careerFormCard";
+      scope: "careerApplyCard" | "careerFormCard" | "contactFormCard" | "contactButton";
       blockIndex?: number;
     }
   | {

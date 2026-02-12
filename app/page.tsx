@@ -24,14 +24,24 @@ export default async function Home() {
 
   return (
     <>
-      <IntroOverlay
-        mode="fullscreen"
-        logoText={globals.logoText}
-        motto={globals.motto}
-        logoTextStyle={{
-          ...(styleFrom(globals.logoTextStyle) ?? {}),
-          fontFamily: fontFamilyForKey(globals.logoTextStyle?.font ?? globals.bodyFont),
-        }}
+        <IntroOverlay
+          mode="fullscreen"
+          logoText={globals.logoText}
+          motto={globals.motto}
+          logoTextHtml={globals.introLogoTextHtml}
+          logoTextRich={globals.introLogoTextRich}
+          mottoHtml={globals.introMottoHtml}
+          mottoRich={globals.introMottoRich}
+          bodyText={globals.introBody ?? ""}
+          bodyHtml={globals.introBodyHtml}
+          bodyRich={globals.introBodyRich}
+          body2Text={globals.introBody2 ?? ""}
+          body2Html={globals.introBody2Html}
+          body2Rich={globals.introBody2Rich}
+          logoTextStyle={{
+            ...(styleFrom(globals.logoTextStyle) ?? {}),
+            fontFamily: fontFamilyForKey(globals.logoTextStyle?.font ?? globals.bodyFont),
+          }}
         mottoStyle={{
           ...(styleFrom(globals.mottoStyle) ?? {}),
           fontFamily: fontFamilyForKey(globals.mottoStyle?.font ?? globals.mottoFont),

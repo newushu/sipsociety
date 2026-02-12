@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { memo, useEffect } from "react";
 import { ContentBlock, FontKey, GlobalSettings, TextStyle } from "@/lib/content/types";
 import { fontFamilyForKey } from "@/lib/content/fonts";
 import BrandMessageSection from "@/components/blocks/BrandMessageSection";
+import { sanitizeRichHtml } from "@/lib/content/rich";
 
 const sectionIds: Record<ContentBlock["type"], string> = {
   hero: "top",
@@ -19,7 +20,7 @@ type Props = {
   globals?: GlobalSettings;
 };
 
-export default function BlockRenderer({ blocks, globals }: Props) {
+function BlockRenderer({ blocks, globals }: Props) {
   const logoMark = globals?.logoMark ?? "SS";
   const logoText = globals?.logoText ?? "Sip Society";
   const logoImageUrl = globals?.logoImageUrl ?? "";
@@ -30,6 +31,8 @@ export default function BlockRenderer({ blocks, globals }: Props) {
   const borderColor = globals?.borderColor ?? "#e7e2d9";
   const borderWidth = globals?.borderWidth ?? 1;
   const brandMessage = globals?.brandMessage;
+  const brandMessageHtml = globals?.brandMessageHtml;
+  const brandMessageRich = globals?.brandMessageRich;
   const styleFrom = (style?: TextStyle, fontKey?: FontKey) => {
     const next: React.CSSProperties = {};
     if (style) {
@@ -44,6 +47,13 @@ export default function BlockRenderer({ blocks, globals }: Props) {
       next.fontFamily = fontFamilyForKey(resolvedFont);
     }
     return Object.keys(next).length ? next : undefined;
+  };
+  const renderRichText = (text: string | undefined, html: string | undefined, rich?: boolean) => {
+    if (rich && html) {
+      const safe = sanitizeRichHtml(html);
+      return <span dangerouslySetInnerHTML={{ __html: safe }} />;
+    }
+    return text ?? "";
   };
   const wrapLink = (
     enabled?: boolean,
@@ -263,7 +273,11 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                         className="max-w-2xl text-3xl font-semibold sm:text-5xl"
                         style={styleFrom(block.data.taglineStyle, globals?.bodyFont)}
                       >
-                        {block.data.tagline}
+                        {renderRichText(
+                          block.data.tagline,
+                          block.data.taglineHtml,
+                          block.data.taglineRich
+                        )}
                       </h1>
                     )
                   ) : null}
@@ -329,7 +343,9 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                   showLogoMark={showLogoMark}
                   showLogoBox={showLogoBox}
                   border={{ enabled: borderEnabled, color: borderColor, width: borderWidth }}
-                  messageOverride={brandMessage}
+                  messageOverride={block.data.message}
+                  messageOverrideHtml={block.data.messageHtml}
+                  messageOverrideRich={true}
                   headingStyle={
                     block.data.showHeading ?? true
                       ? styleFrom(block.data.headingStyle, globals?.brandHeadingFont)
@@ -337,10 +353,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                   }
                   messageStyle={
                     block.data.showMessage ?? true
-                      ? styleFrom(
-                          globals?.brandMessageStyle ?? block.data.messageStyle,
-                          globals?.brandMessageFont
-                        )
+                      ? styleFrom(block.data.messageStyle)
                       : { display: "none" }
                   }
                 />
@@ -353,13 +366,18 @@ export default function BlockRenderer({ blocks, globals }: Props) {
               <section
                 key={block.id}
                 id={sectionIds["triple-media"]}
-                className="relative left-1/2 right-1/2 -translate-x-1/2 grid gap-4 px-6 sm:gap-6 lg:grid-cols-[1fr_1fr_1fr]"
-                style={{ width: "var(--inline-viewport-width, 100vw)" }}
+                className="relative grid grid-cols-3 items-stretch gap-4 px-0 sm:gap-6"
+                style={{
+                  width: "100vw",
+                  paddingLeft: "24px",
+                  paddingRight: "24px",
+                  marginLeft: "calc(50% - 50vw)",
+                }}
               >
                 <div
                   data-block-index={index}
                   data-border-effect={leftBorderEffect}
-                  className="relative flex min-h-[48vh] flex-col items-center justify-center overflow-hidden rounded-[32px] border border-stone-200 p-8 text-center text-white shadow-xl sm:min-h-[60vh] sm:p-10 lg:min-h-[80vh]"
+                  className="relative flex h-full min-h-[48vh] flex-col items-center justify-center overflow-hidden rounded-[32px] border border-stone-200 p-8 text-center text-white shadow-xl sm:min-h-[60vh] sm:p-10 lg:min-h-[80vh]"
                   style={{
                     backgroundColor: block.data.leftAccent,
                     borderColor: borderEnabled ? borderColor : "transparent",
@@ -382,26 +400,47 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                       <div
                         data-edit="leftLogo"
                         data-block-index={index}
-                        className={`mb-5 flex h-12 w-12 items-center justify-center text-xs font-semibold sm:h-16 sm:w-16 sm:text-sm ${
+                        className={`mb-5 flex flex-shrink-0 items-center justify-center text-xs font-semibold sm:text-sm ${
                           showLogoBox
                             ? "rounded-full border border-white/40 bg-white/10"
                             : ""
                         }`}
-                        style={{ transform: `scale(${block.data.leftLogoBoxScale ?? 1})` }}
+                        style={{
+                          width: `${Math.min(
+                            block.data.leftLogoMaxPx ?? 180,
+                            Math.max(
+                              24,
+                              56 *
+                                (block.data.leftLogoBoxScale ?? 1) *
+                                (block.data.leftLogoScale ?? 1)
+                            )
+                          )}px`,
+                          height: `${Math.min(
+                            block.data.leftLogoMaxPx ?? 180,
+                            Math.max(
+                              24,
+                              56 *
+                                (block.data.leftLogoBoxScale ?? 1) *
+                                (block.data.leftLogoScale ?? 1)
+                            )
+                          )}px`,
+                          minWidth: "24px",
+                          minHeight: "24px",
+                          maxWidth: "18vw",
+                          maxHeight: "18vw",
+                        }}
                       >
                         {logoImageUrl ? (
                           <img
                             src={logoImageUrl}
                             alt={`${logoText} logo`}
-                            className="logo-transform-left h-12 w-12 rounded-full object-cover"
+                            className="logo-transform-left h-full w-full rounded-full object-cover"
                             style={
                               {
                                 "--logo-x": `${block.data.leftLogoX ?? 0}%`,
                                 "--logo-y": `${block.data.leftLogoY ?? 0}%`,
-                                "--logo-scale": String(block.data.leftLogoScale ?? 1),
-                                "--logo-scale-mobile": String(
-                                  Math.min(1, block.data.leftLogoScale ?? 1)
-                                ),
+                                "--logo-scale": "1",
+                                "--logo-scale-mobile": "1",
                               } as React.CSSProperties
                             }
                           />
@@ -412,10 +451,8 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                               {
                                 "--logo-x": `${block.data.leftLogoX ?? 0}%`,
                                 "--logo-y": `${block.data.leftLogoY ?? 0}%`,
-                                "--logo-scale": String(block.data.leftLogoScale ?? 1),
-                                "--logo-scale-mobile": String(
-                                  Math.min(1, block.data.leftLogoScale ?? 1)
-                                ),
+                                "--logo-scale": "1",
+                                "--logo-scale-mobile": "1",
                               } as React.CSSProperties
                             }
                           >
@@ -431,10 +468,14 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     <h3
                       data-edit="leftTitle"
                       data-block-index={index}
-                      className="mobile-no-transform text-2xl font-semibold sm:text-3xl"
+                      className="mobile-no-transform break-words text-2xl font-semibold sm:text-3xl"
                       style={styleFrom(block.data.leftTitleStyle, globals?.bodyFont)}
                     >
-                      {block.data.leftTitle}
+                      {renderRichText(
+                        block.data.leftTitle,
+                        block.data.leftTitleHtml,
+                        true
+                      )}
                     </h3>
                   )}
                   {wrapLink(
@@ -443,10 +484,14 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     <p
                       data-edit="leftBody"
                       data-block-index={index}
-                      className="mobile-no-transform mt-4 text-sm text-white/80 sm:text-base"
+                      className="mobile-no-transform mt-4 break-words text-sm text-white/80 sm:text-base"
                       style={styleFrom(block.data.leftBodyStyle, globals?.bodyFont)}
                     >
-                      {block.data.leftBody}
+                      {renderRichText(
+                        block.data.leftBody,
+                        block.data.leftBodyHtml,
+                        true
+                      )}
                     </p>
                   )}
                 </div>
@@ -456,7 +501,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                   <div
                     data-edit="middleMedia"
                     data-block-index={index}
-                    className="relative h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-100 sm:h-[60vh] lg:h-[80vh]"
+                    className="relative h-full min-h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-100 sm:min-h-[60vh] lg:min-h-[80vh]"
                     style={{
                       borderColor: borderEnabled ? borderColor : "transparent",
                       borderWidth: borderEnabled ? borderWidth : 0,
@@ -480,7 +525,7 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                     data-edit="rightMedia"
                     data-block-index={index}
                     data-curtain={showCurtain ? "true" : undefined}
-                    className="relative h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-900 sm:h-[60vh] lg:h-[80vh]"
+                    className="relative h-full min-h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-900 sm:min-h-[60vh] lg:min-h-[80vh]"
                     style={{
                       borderColor: borderEnabled ? borderColor : "transparent",
                       borderWidth: borderEnabled ? borderWidth : 0,
@@ -561,7 +606,11 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                       className="absolute bottom-8 left-8 text-lg font-semibold text-white"
                       style={styleFrom(block.data.captionStyle, globals?.bodyFont)}
                     >
-                      {block.data.caption}
+                      {renderRichText(
+                        block.data.caption,
+                        block.data.captionHtml,
+                        block.data.captionRich
+                      )}
                     </p>
                   )}
                 </div>
@@ -676,7 +725,11 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                       className="max-w-2xl text-base font-semibold text-stone-800"
                       style={styleFrom(block.data.leadStyle, globals?.bodyFont)}
                     >
-                      {block.data.leadText}
+                      {renderRichText(
+                        block.data.leadText,
+                        block.data.leadTextHtml,
+                        block.data.leadTextRich
+                      )}
                     </p>
                   ) : null}
                   <div className="flex w-full flex-col items-center gap-3">
@@ -697,7 +750,11 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                       className="rounded-full border border-stone-200 bg-stone-900 px-5 py-2 text-sm font-semibold text-white"
                       style={styleFrom(block.data.leadButtonStyle, globals?.bodyFont)}
                     >
-                      {block.data.leadButtonText ?? "Join"}
+                      {renderRichText(
+                        block.data.leadButtonText ?? "Join",
+                        block.data.leadButtonTextHtml,
+                        block.data.leadButtonTextRich
+                      )}
                     </button>
                   </div>
                 </div>
@@ -713,7 +770,11 @@ export default function BlockRenderer({ blocks, globals }: Props) {
                           data-block-index={index}
                           style={styleFrom(block.data.taglineStyle, globals?.bodyFont)}
                         >
-                          {block.data.tagline}
+                          {renderRichText(
+                            block.data.tagline,
+                            block.data.taglineHtml,
+                            block.data.taglineRich
+                          )}
                         </p>
                       )
                     ) : null}
@@ -742,3 +803,5 @@ export default function BlockRenderer({ blocks, globals }: Props) {
     </div>
   );
 }
+
+export default memo(BlockRenderer);

@@ -14,16 +14,22 @@ import {
 } from "@/lib/content/types";
 import { fontFamilyForKey, fontOptions, sortFontOptions } from "@/lib/content/fonts";
 import { createBrowserClient } from "@/lib/supabase/browser";
-import { defaultAboutContent, defaultCareerContent } from "@/lib/content/defaults";
-import ColorPicker from "@/components/admin/ColorPicker";
+import {
+  defaultAboutContent,
+  defaultCareerContent,
+  defaultContactContent,
+} from "@/lib/content/defaults";
+import RichTextEditor, { type RichFontOption } from "@/components/admin/RichTextEditor";
+import SingleColorPicker from "@/components/admin/SingleColorPicker";
+import { sanitizeRichHtml } from "@/lib/content/rich";
 
 const cardClass =
-  "rounded-2xl border border-stone-200 bg-white p-4 text-xs text-stone-700 shadow-sm";
+  "rounded-2xl border border-stone-200 bg-white p-4 text-xs text-stone-700 shadow-sm overflow-x-hidden";
 
 const labelClass = "text-[10px] uppercase tracking-[0.3em] text-stone-500";
 
 const inputClass =
-  "mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700";
+  "mt-2 w-full max-w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700";
 
 const rangeClass =
   "mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-amber-500 [&::-moz-range-thumb]:shadow";
@@ -162,6 +168,7 @@ export default function InlineEditPanel({
     setUploading(true);
     setUploadError(null);
     setUploadProgress(0);
+    // eslint-disable-next-line react-hooks/purity
     const fileName = `${Date.now()}-${file.name}`.replace(/\s+/g, "-");
     const { error } = await supabase.storage.from("media").upload(fileName, file, {
       upsert: true,
@@ -514,9 +521,19 @@ export default function InlineEditPanel({
                             Current
                           </span>
                         ) : null}
-                        <div className="h-20 w-full overflow-hidden rounded-lg">
+                        <div className="relative h-20 w-full overflow-hidden rounded-lg">
+                          <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-white">
+                            {isVideo ? "Video" : "Photo"}
+                          </span>
                           {isVideo ? (
-                            <video className="h-full w-full object-cover" src={asset.url} muted />
+                            <video
+                              className="h-full w-full object-cover"
+                              src={asset.url}
+                              muted
+                              autoPlay
+                              loop
+                              playsInline
+                            />
                           ) : (
                             <img className="h-full w-full object-cover" src={asset.url} alt="" />
                           )}
@@ -790,6 +807,7 @@ export default function InlineEditPanel({
     if (target.scope === "left" && block.type === "triple-media") {
       const scale = block.data.leftLogoScale ?? 1;
       const boxScale = block.data.leftLogoBoxScale ?? 1;
+      const maxPx = block.data.leftLogoMaxPx ?? 180;
       const x = block.data.leftLogoX ?? 0;
       const y = block.data.leftLogoY ?? 0;
 
@@ -827,6 +845,24 @@ export default function InlineEditPanel({
                 onChangeContent(
                   updateBlock(content, target.blockIndex, {
                     leftLogoBoxScale: Number(event.target.value),
+                  })
+                )
+              }
+            />
+          </label>
+          <label className="text-[10px] text-stone-500">
+            Max logo size ({Math.round(maxPx)}px)
+            <input
+              className={rangeClass}
+              type="range"
+              min={48}
+              max={500}
+              step={4}
+              value={maxPx}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex, {
+                    leftLogoMaxPx: Number(event.target.value),
                   })
                 )
               }
@@ -1028,6 +1064,206 @@ export default function InlineEditPanel({
   }
 
   if (target.kind === "media") {
+    if (target.scope === "contactBackground") {
+      const contact = { ...defaultContactContent.contact!, ...(content.contact ?? {}) };
+      const updateContact = (next: typeof contact) =>
+        onChangeContent({ ...content, contact: next });
+      const mediaType =
+        contact.backgroundType ??
+        (contact.backgroundUrl && isVideoUrl(contact.backgroundUrl) ? "video" : "image");
+      const accept = mediaType === "video" ? "video/*" : "image/*";
+
+      return withModal(
+        <div className={cardClass}>
+          <div className="flex items-center justify-between">
+            <p className={labelClass}>Contact background</p>
+            {onClear ? (
+              <button
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={onClear}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Media URL
+            <input
+              className={inputClass}
+              value={contact.backgroundUrl}
+              onChange={(event) =>
+                updateContact({ ...contact, backgroundUrl: event.target.value })
+              }
+            />
+          </label>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Media type
+            <select
+              className={inputClass}
+              value={mediaType}
+              onChange={(event) =>
+                updateContact({
+                  ...contact,
+                  backgroundType: event.target.value as "image" | "video",
+                })
+              }
+            >
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+            </select>
+          </label>
+          <div className="mt-3">
+            <p className="text-[10px] text-stone-500">Upload media</p>
+            <input
+              ref={mediaUploadInputRef}
+              className="hidden"
+              type="file"
+              accept={accept}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  handleUpload(file, (url) =>
+                    updateContact({ ...contact, backgroundUrl: url })
+                  );
+                }
+                if (mediaUploadInputRef.current) {
+                  mediaUploadInputRef.current.value = "";
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="mt-2 inline-flex items-center rounded-full border border-stone-200 bg-stone-900 px-4 py-2 text-[11px] font-semibold text-white shadow-sm"
+              onClick={() => mediaUploadInputRef.current?.click()}
+            >
+              Upload media
+            </button>
+          </div>
+          {uploading ? (
+            <div className="mt-2 space-y-1">
+              <p className="text-[10px] text-stone-400">Uploading...</p>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-stone-200">
+                <div
+                  className={`h-full ${
+                    uploadProgress === 100 ? "bg-amber-500" : "bg-stone-400 animate-pulse"
+                  }`}
+                  style={{ width: `${uploadProgress ?? 35}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+          {uploadError ? (
+            <p className="mt-2 text-[10px] text-red-500">{uploadError}</p>
+          ) : null}
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <p className={labelClass}>Media library</p>
+              <button
+                className="text-[10px] uppercase tracking-[0.2em] text-stone-400"
+                onClick={loadAssets}
+                type="button"
+              >
+                Refresh
+              </button>
+            </div>
+            {loadingAssets ? (
+              <p className="mt-2 text-[10px] text-stone-400">Loading...</p>
+            ) : assetError ? (
+              <p className="mt-2 text-[10px] text-red-500">{assetError}</p>
+            ) : (
+              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-stone-200 bg-white p-2">
+                <div className="grid grid-cols-4 gap-2">
+                  {assets
+                    .filter((asset) =>
+                      mediaType === "video" ? isVideoUrl(asset.url) : isImageUrl(asset.url)
+                    )
+                    .map((asset) => (
+                      <button
+                        key={asset.url}
+                        className="group relative h-16 w-full overflow-hidden rounded-lg border border-stone-200 bg-white"
+                        onClick={() =>
+                          updateContact({ ...contact, backgroundUrl: asset.url })
+                        }
+                        onMouseEnter={(event) =>
+                          handlePreviewEnter(event, asset, isVideoUrl(asset.url) ? "video" : "image")
+                        }
+                        onMouseMove={handlePreviewMove}
+                        onMouseLeave={handlePreviewLeave}
+                      >
+                        {isVideoUrl(asset.url) ? (
+                          <video className="h-full w-full object-cover" src={asset.url} />
+                        ) : (
+                          <img className="h-full w-full object-cover" src={asset.url} alt="" />
+                        )}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+            <button
+              className="mt-3 w-full rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold text-stone-700"
+              onClick={() => setLibraryExpanded(true)}
+              type="button"
+            >
+              Open full media library
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="text-[10px] text-stone-500">
+              X ({Math.round(contact.backgroundX ?? 50)}%)
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={contact.backgroundX ?? 50}
+                onChange={(event) =>
+                  updateContact({
+                    ...contact,
+                    backgroundX: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label className="text-[10px] text-stone-500">
+              Y ({Math.round(contact.backgroundY ?? 50)}%)
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={contact.backgroundY ?? 50}
+                onChange={(event) =>
+                  updateContact({
+                    ...contact,
+                    backgroundY: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+          <label className="mt-3 text-[10px] text-stone-500">
+            Scale ({(contact.backgroundScale ?? 1).toFixed(2)})
+            <input
+              className={rangeClass}
+              type="range"
+              min={0.6}
+              max={2}
+              step={0.05}
+              value={contact.backgroundScale ?? 1}
+              onChange={(event) =>
+                updateContact({
+                  ...contact,
+                  backgroundScale: Number(event.target.value),
+                })
+              }
+            />
+          </label>
+        </div>
+      );
+    }
     if (
       target.scope === "aboutHeroImage" ||
       target.scope === "aboutHeroLogo" ||
@@ -1045,7 +1281,7 @@ export default function InlineEditPanel({
 
       const label =
         target.scope === "aboutHeroImage"
-          ? "About hero image"
+          ? "About hero media"
           : target.scope === "aboutHeroLogo"
             ? "About hero logo"
             : "About section media";
@@ -1053,8 +1289,14 @@ export default function InlineEditPanel({
         ? section?.mediaUrl ?? ""
         : target.scope === "aboutHeroLogo"
           ? about.heroLogoUrl
-          : about.heroImageUrl;
-      const mediaType = isSection ? section?.mediaType ?? "image" : "image";
+          : about.heroMediaType === "video"
+            ? about.heroVideoUrl ?? ""
+            : about.heroImageUrl;
+      const mediaType = isSection
+        ? section?.mediaType ?? "image"
+        : target.scope === "aboutHeroImage"
+          ? about.heroMediaType ?? "image"
+          : "image";
       const accept =
         target.scope === "aboutHeroLogo"
           ? "image/*"
@@ -1093,7 +1335,12 @@ export default function InlineEditPanel({
                   updateAbout({ ...about, heroLogoUrl: nextUrl });
                   return;
                 }
-                updateAbout({ ...about, heroImageUrl: nextUrl });
+                updateAbout({
+                  ...about,
+                  ...(mediaType === "video"
+                    ? { heroVideoUrl: nextUrl, heroMediaType: "video" }
+                    : { heroImageUrl: nextUrl, heroMediaType: "image" }),
+                });
               }}
             />
           </label>
@@ -1112,6 +1359,23 @@ export default function InlineEditPanel({
                   );
                   updateAbout({ ...about, sections: nextSections });
                 }}
+              >
+                <option value="image">Image</option>
+                <option value="video">Video</option>
+              </select>
+            </label>
+          ) : target.scope === "aboutHeroImage" ? (
+            <label className="mt-3 text-[10px] text-stone-500">
+              Media type
+              <select
+                className={inputClass}
+                value={mediaType}
+                onChange={(event) =>
+                  updateAbout({
+                    ...about,
+                    heroMediaType: event.target.value as "image" | "video",
+                  })
+                }
               >
                 <option value="image">Image</option>
                 <option value="video">Video</option>
@@ -1140,7 +1404,12 @@ export default function InlineEditPanel({
                       updateAbout({ ...about, heroLogoUrl: url });
                       return;
                     }
-                    updateAbout({ ...about, heroImageUrl: url });
+                    updateAbout({
+                      ...about,
+                      ...(mediaType === "video"
+                        ? { heroVideoUrl: url, heroMediaType: "video" }
+                        : { heroImageUrl: url, heroMediaType: "image" }),
+                    });
                   });
                 }
                 if (mediaUploadInputRef.current) {
@@ -1214,7 +1483,12 @@ export default function InlineEditPanel({
                             updateAbout({ ...about, heroLogoUrl: asset.url });
                             return;
                           }
-                          updateAbout({ ...about, heroImageUrl: asset.url });
+                          updateAbout({
+                            ...about,
+                            ...(mediaType === "video"
+                              ? { heroVideoUrl: asset.url, heroMediaType: "video" }
+                              : { heroImageUrl: asset.url, heroMediaType: "image" }),
+                          });
                         }}
                         onMouseEnter={(event) =>
                           handlePreviewEnter(event, asset, isVideoUrl(asset.url) ? "video" : "image")
@@ -2311,6 +2585,60 @@ export default function InlineEditPanel({
   }
 
   if (target.kind === "container") {
+    if (target.scope === "contactFormCard" || target.scope === "contactButton") {
+      const contact = { ...defaultContactContent.contact!, ...(content.contact ?? {}) };
+      const onUpdate = (patch: Partial<typeof contact>) =>
+        onChangeContent({ ...content, contact: { ...contact, ...patch } });
+      const isButton = target.scope === "contactButton";
+      return (
+        <div className={cardClass}>
+          <p className={labelClass}>{isButton ? "Contact button" : "Contact box"} styles</p>
+          <label className="mt-3 text-[10px] text-stone-500">
+            {isButton ? "Button color" : "Box color"}
+            <input
+              className={inputClass}
+              type="color"
+              value={isButton ? contact.buttonColor : contact.boxColor}
+              onChange={(event) =>
+                onUpdate({
+                  [isButton ? "buttonColor" : "boxColor"]: event.target.value,
+                })
+              }
+            />
+          </label>
+          {!isButton ? (
+            <label className="mt-3 text-[10px] text-stone-500">
+              Box opacity ({Math.round(contact.boxOpacity * 100)}%)
+              <input
+                className={rangeClass}
+                type="range"
+                min={0.4}
+                max={1}
+                step={0.05}
+                value={contact.boxOpacity}
+                onChange={(event) =>
+                  onUpdate({ boxOpacity: Number(event.target.value) })
+                }
+              />
+            </label>
+          ) : null}
+          <label className="mt-3 text-[10px] text-stone-500">
+            Text color
+            <input
+              className={inputClass}
+              type="color"
+              value={isButton ? contact.buttonTextColor : contact.boxTextColor}
+              onChange={(event) =>
+                onUpdate({
+                  [isButton ? "buttonTextColor" : "boxTextColor"]: event.target.value,
+                })
+              }
+            />
+          </label>
+        </div>
+      );
+    }
+
     const career = { ...defaultCareerContent, ...(content.career ?? {}) };
     const isApply = target.scope === "careerApplyCard";
     const bgColor = isApply ? career.applyCardBgColor : career.formCardBgColor;
@@ -2402,6 +2730,20 @@ export default function InlineEditPanel({
                     ? "Section heading"
                     : target.scope === "aboutSectionBody"
                       ? "Section body"
+                      : target.scope === "contactHeading"
+                        ? "Contact heading"
+                        : target.scope === "contactBody"
+                          ? "Contact body"
+                          : target.scope === "contactLabel"
+                            ? "Contact label"
+                            : target.scope === "contactPlaceholder"
+                              ? "Contact placeholder"
+                              : target.scope === "contactMessageLabel"
+                                ? "Message label"
+                                : target.scope === "contactMessagePlaceholder"
+                                  ? "Message placeholder"
+                              : target.scope === "contactButton"
+                                ? "Contact button"
           : target.scope === "brandHeading"
             ? "Brand heading"
             : target.scope === "brandMessage"
@@ -2424,7 +2766,9 @@ export default function InlineEditPanel({
       target.scope === "careerApplyBody" ||
       target.scope === "careerRolesEmpty" ||
       target.scope === "aboutHeroBody" ||
-      target.scope === "aboutSectionBody";
+      target.scope === "aboutSectionBody" ||
+      target.scope === "contactBody" ||
+      target.scope === "contactMessagePlaceholder";
 
     const visibilityControl = (() => {
       if (target.scope === "logoText") {
@@ -2530,6 +2874,25 @@ export default function InlineEditPanel({
     let linkUrl = "";
     let onLinkEnabledChange: (next: boolean) => void = () => {};
     let onLinkUrlChange: (next: string) => void = () => {};
+    let richEnabled = false;
+    let htmlValue = "";
+    let onRichToggle: (next: boolean) => void = () => {};
+    let onHtmlChange: (next: string) => void = () => {};
+    let supportsRich = false;
+    const toHtml = (plain: string) =>
+      plain
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br />");
+    const toPlain = (html: string) => {
+      if (typeof window === "undefined") {
+        return html.replace(/<[^>]*>/g, "");
+      }
+      const div = document.createElement("div");
+      div.innerHTML = html;
+      return div.textContent ?? "";
+    };
 
     if (target.scope === "logoText") {
       value = globals.logoText;
@@ -2548,6 +2911,29 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { tagline: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { taglineStyle: next }));
+      richEnabled = block.data.taglineRich ?? false;
+      htmlValue = block.data.taglineHtml ?? "";
+      supportsRich = true;
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            taglineRich: next,
+            taglineHtml: html,
+            tagline: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            taglineHtml: safe,
+            tagline: toPlain(safe),
+          })
+        );
+      };
       linkEnabled = block.data.taglineLinkEnabled ?? false;
       linkUrl = block.data.taglineLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2563,6 +2949,29 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { heading: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { headingStyle: next }));
+      richEnabled = block.data.headingRich ?? false;
+      htmlValue = block.data.headingHtml ?? "";
+      supportsRich = true;
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            headingRich: next,
+            headingHtml: html,
+            heading: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            headingHtml: safe,
+            heading: toPlain(safe),
+          })
+        );
+      };
       linkEnabled = block.data.headingLinkEnabled ?? false;
       linkUrl = block.data.headingLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2570,13 +2979,26 @@ export default function InlineEditPanel({
       onLinkUrlChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { headingLinkUrl: next }));
     } else if (target.scope === "brandMessage" && block?.type === "brand-message") {
-      value = globals.brandMessage ?? block.data.message;
-      style = globals.brandMessageStyle ?? block.data.messageStyle;
-      onValueChange = (next) => {
-        onChangeGlobals({ ...globals, brandMessage: next });
+      value = block.data.message;
+      style = block.data.messageStyle;
+      onValueChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { message: next }));
+      onStyleChange = (next) =>
+        onChangeContent(updateBlock(content, target.blockIndex!, { messageStyle: next }));
+      richEnabled = true;
+      htmlValue = block.data.messageHtml ?? "";
+      supportsRich = true;
+      onRichToggle = () => {};
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        const plain = toPlain(safe);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            messageHtml: safe,
+            message: plain,
+          })
+        );
       };
-      onStyleChange = (next) => onChangeGlobals({ ...globals, brandMessageStyle: next });
       linkEnabled = block.data.messageLinkEnabled ?? false;
       linkUrl = block.data.messageLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2590,6 +3012,30 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leftTitle: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leftTitleStyle: next }));
+      richEnabled = true;
+      htmlValue = block.data.leftTitleHtml ?? "";
+      supportsRich = true;
+      onRichToggle = () => {};
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leftTitleRich: next,
+            leftTitleHtml: html,
+            leftTitle: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leftTitleHtml: safe,
+            leftTitle: toPlain(safe),
+          })
+        );
+      };
       linkEnabled = block.data.leftTitleLinkEnabled ?? false;
       linkUrl = block.data.leftTitleLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2603,6 +3049,30 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leftBody: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leftBodyStyle: next }));
+      richEnabled = true;
+      htmlValue = block.data.leftBodyHtml ?? "";
+      supportsRich = true;
+      onRichToggle = () => {};
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leftBodyRich: next,
+            leftBodyHtml: html,
+            leftBody: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leftBodyHtml: safe,
+            leftBody: toPlain(safe),
+          })
+        );
+      };
       linkEnabled = block.data.leftBodyLinkEnabled ?? false;
       linkUrl = block.data.leftBodyLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2616,6 +3086,29 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { caption: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { captionStyle: next }));
+      richEnabled = block.data.captionRich ?? false;
+      htmlValue = block.data.captionHtml ?? "";
+      supportsRich = true;
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            captionRich: next,
+            captionHtml: html,
+            caption: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            captionHtml: safe,
+            caption: toPlain(safe),
+          })
+        );
+      };
       linkEnabled = block.data.captionLinkEnabled ?? false;
       linkUrl = block.data.captionLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2629,6 +3122,29 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { tagline: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { taglineStyle: next }));
+      richEnabled = block.data.taglineRich ?? false;
+      htmlValue = block.data.taglineHtml ?? "";
+      supportsRich = true;
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            taglineRich: next,
+            taglineHtml: html,
+            tagline: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            taglineHtml: safe,
+            tagline: toPlain(safe),
+          })
+        );
+      };
       linkEnabled = block.data.taglineLinkEnabled ?? false;
       linkUrl = block.data.taglineLinkUrl ?? "";
       onLinkEnabledChange = (next) =>
@@ -2643,6 +3159,29 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leadText: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leadStyle: next }));
+      richEnabled = block.data.leadTextRich ?? false;
+      htmlValue = block.data.leadTextHtml ?? "";
+      supportsRich = true;
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leadTextRich: next,
+            leadTextHtml: html,
+            leadText: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leadTextHtml: safe,
+            leadText: toPlain(safe),
+          })
+        );
+      };
     } else if (target.scope === "footerButton" && block?.type === "footer") {
       value = block.data.leadButtonText ?? "";
       style = block.data.leadButtonStyle;
@@ -2651,6 +3190,69 @@ export default function InlineEditPanel({
         onChangeContent(updateBlock(content, target.blockIndex!, { leadButtonText: next }));
       onStyleChange = (next) =>
         onChangeContent(updateBlock(content, target.blockIndex!, { leadButtonStyle: next }));
+      richEnabled = block.data.leadButtonTextRich ?? false;
+      htmlValue = block.data.leadButtonTextHtml ?? "";
+      supportsRich = true;
+      onRichToggle = (next) => {
+        const html = next ? (htmlValue || toHtml(value)) : undefined;
+        const plain = next ? toPlain(html ?? "") : value;
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leadButtonTextRich: next,
+            leadButtonTextHtml: html,
+            leadButtonText: plain,
+          })
+        );
+      };
+      onHtmlChange = (next) => {
+        const safe = sanitizeRichHtml(next);
+        onChangeContent(
+          updateBlock(content, target.blockIndex!, {
+            leadButtonTextHtml: safe,
+            leadButtonText: toPlain(safe),
+          })
+        );
+      };
+    } else if (target.scope.startsWith("contact")) {
+      const contact = { ...defaultContactContent.contact!, ...(content.contact ?? {}) };
+      const updateContact = (patch: Partial<typeof contact>) =>
+        onChangeContent({ ...content, contact: { ...contact, ...patch } });
+      if (target.scope === "contactHeading") {
+        value = contact.heading;
+        style = contact.headingStyle;
+        onValueChange = (next) => updateContact({ heading: next });
+        onStyleChange = (next) => updateContact({ headingStyle: next });
+      } else if (target.scope === "contactBody") {
+        value = contact.body;
+        style = contact.bodyStyle;
+        onValueChange = (next) => updateContact({ body: next });
+        onStyleChange = (next) => updateContact({ bodyStyle: next });
+      } else if (target.scope === "contactLabel") {
+        value = contact.label;
+        style = contact.labelStyle;
+        onValueChange = (next) => updateContact({ label: next });
+        onStyleChange = (next) => updateContact({ labelStyle: next });
+      } else if (target.scope === "contactPlaceholder") {
+        value = contact.placeholder;
+        style = contact.labelStyle;
+        onValueChange = (next) => updateContact({ placeholder: next });
+        onStyleChange = (next) => updateContact({ labelStyle: next });
+      } else if (target.scope === "contactMessageLabel") {
+        value = contact.messageLabel;
+        style = contact.labelStyle;
+        onValueChange = (next) => updateContact({ messageLabel: next });
+        onStyleChange = (next) => updateContact({ labelStyle: next });
+      } else if (target.scope === "contactMessagePlaceholder") {
+        value = contact.messagePlaceholder;
+        style = contact.labelStyle;
+        onValueChange = (next) => updateContact({ messagePlaceholder: next });
+        onStyleChange = (next) => updateContact({ labelStyle: next });
+      } else if (target.scope === "contactButton") {
+        value = contact.buttonText;
+        style = contact.buttonStyle;
+        onValueChange = (next) => updateContact({ buttonText: next });
+        onStyleChange = (next) => updateContact({ buttonStyle: next });
+      }
     } else if (target.scope.startsWith("about")) {
       const about = { ...defaultAboutContent, ...(content.about ?? {}) };
       const updateAbout = (next: typeof about) =>
@@ -2772,6 +3374,11 @@ export default function InlineEditPanel({
         ? hoverFont
         : resolvedStyle.font ?? globals.bodyFont ?? "sans";
     const sortedFonts = sortFontOptions(fontOptions, usedFonts);
+    const richFontOptions: RichFontOption[] = sortedFonts.map((option) => ({
+      value: option.value,
+      label: option.label,
+      family: fontFamilyForKey(option.value),
+    }));
     const fontList = [
       { value: "", label: "Use global" },
       ...sortedFonts.map((option) => ({ value: option.value, label: option.label })),
@@ -2789,56 +3396,76 @@ export default function InlineEditPanel({
         </div>
         {visibilityControl ? <div className="mt-3">{visibilityControl}</div> : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-[1.2fr_1fr]">
-          <label className="text-[10px] text-stone-500">
-            Text
-            {multiline ? (
-              <textarea
-                ref={(node) => {
-                  textInputRef.current = node;
-                }}
-                className={`${inputClass} min-h-[90px]`}
-                style={{ fontFamily: fontFamilyForKey(inputFontKey) }}
-                value={value}
-                onChange={(event) => onValueChange(event.target.value)}
-                onSelect={() => {
-                  const node = textInputRef.current;
-                  if (!node) return;
-                  setHasSelection(
-                    node.selectionStart !== null &&
-                      node.selectionEnd !== null &&
-                      node.selectionStart !== node.selectionEnd
-                  );
-                }}
-                onBlur={() => {
-                  setHasSelection(false);
-                  setHoverFont(null);
-                }}
-              />
-            ) : (
+          <div className="space-y-2">
+            {supportsRich ? (
               <input
-                ref={(node) => {
-                  textInputRef.current = node;
-                }}
-                className={inputClass}
-                style={{ fontFamily: fontFamilyForKey(inputFontKey) }}
-                value={value}
-                onChange={(event) => onValueChange(event.target.value)}
-                onSelect={() => {
-                  const node = textInputRef.current;
-                  if (!node) return;
-                  setHasSelection(
-                    node.selectionStart !== null &&
-                      node.selectionEnd !== null &&
-                      node.selectionStart !== node.selectionEnd
-                  );
-                }}
-                onBlur={() => {
-                  setHasSelection(false);
-                  setHoverFont(null);
-                }}
+                type="checkbox"
+                checked={richEnabled}
+                onChange={(event) => onRichToggle(event.target.checked)}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
               />
-            )}
-          </label>
+            ) : null}
+            <div className="text-[10px] text-stone-500">
+              <p className="mb-1">Text</p>
+              {richEnabled ? (
+                <RichTextEditor
+                  value={htmlValue || toHtml(value)}
+                  onChange={onHtmlChange}
+                  fonts={richFontOptions}
+                  placeholder={placeholder}
+                  showColor={false}
+                />
+              ) : multiline ? (
+                <textarea
+                  ref={(node) => {
+                    textInputRef.current = node;
+                  }}
+                  className={`${inputClass} min-h-[90px]`}
+                  style={{ fontFamily: fontFamilyForKey(inputFontKey) }}
+                  value={value}
+                  onChange={(event) => onValueChange(event.target.value)}
+                  onSelect={() => {
+                    const node = textInputRef.current;
+                    if (!node) return;
+                    setHasSelection(
+                      node.selectionStart !== null &&
+                        node.selectionEnd !== null &&
+                        node.selectionStart !== node.selectionEnd
+                    );
+                  }}
+                  onBlur={() => {
+                    setHasSelection(false);
+                    setHoverFont(null);
+                  }}
+                />
+              ) : (
+                <input
+                  ref={(node) => {
+                    textInputRef.current = node;
+                  }}
+                  className={inputClass}
+                  style={{ fontFamily: fontFamilyForKey(inputFontKey) }}
+                  value={value}
+                  onChange={(event) => onValueChange(event.target.value)}
+                  onSelect={() => {
+                    const node = textInputRef.current;
+                    if (!node) return;
+                    setHasSelection(
+                      node.selectionStart !== null &&
+                        node.selectionEnd !== null &&
+                        node.selectionStart !== node.selectionEnd
+                    );
+                  }}
+                  onBlur={() => {
+                    setHasSelection(false);
+                    setHoverFont(null);
+                  }}
+                />
+              )}
+            </div>
+          </div>
           <div className="text-[10px] text-stone-500">
             Font
             <button
@@ -2940,7 +3567,7 @@ export default function InlineEditPanel({
             )
           : null}
         <div className="mt-4">
-          <ColorPicker
+          <SingleColorPicker
             label="Text color"
             value={resolvedStyle.color ?? "#1c1917"}
             onChange={(next) => onStyleChange({ ...resolvedStyle, color: next })}

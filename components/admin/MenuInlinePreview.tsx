@@ -53,6 +53,7 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
 
   const [multiSelect, setMultiSelect] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
   const [styleTarget, setStyleTarget] = useState<
     | "heading"
     | "subheading"
@@ -149,6 +150,7 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
   };
 
   const SNAP_THRESHOLD = 6;
+  const GRID_SIZE = 40;
 
   const handleDrag =
     (
@@ -168,6 +170,7 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
       const key = fieldKey(sectionId, itemId, field);
       const el = fieldRefs.current[key];
       const container = sectionRefs.current[sectionId];
+      const canvas = menuCanvasRef.current;
       const width = el?.getBoundingClientRect().width ?? 0;
       const height = el?.getBoundingClientRect().height ?? 0;
       const base =
@@ -188,6 +191,21 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
         } else if (Math.abs(nextX + width - markerX) <= SNAP_THRESHOLD) {
           nextX = markerX - width;
           snapX = markerX;
+        } else if (showGrid && container && canvas) {
+          const containerRect = container.getBoundingClientRect();
+          const canvasRect = canvas.getBoundingClientRect();
+          const offsetLeft = containerRect.left - canvasRect.left;
+          const leftGlobal = offsetLeft + nextX;
+          const rightGlobal = leftGlobal + width;
+          const nearestLeftGlobal = Math.round(leftGlobal / GRID_SIZE) * GRID_SIZE;
+          const nearestRightGlobal = Math.round(rightGlobal / GRID_SIZE) * GRID_SIZE;
+          if (Math.abs(leftGlobal - nearestLeftGlobal) <= SNAP_THRESHOLD) {
+            nextX = nearestLeftGlobal - offsetLeft;
+            snapX = nextX;
+          } else if (Math.abs(rightGlobal - nearestRightGlobal) <= SNAP_THRESHOLD) {
+            nextX = nearestRightGlobal - offsetLeft - width;
+            snapX = nextX;
+          }
         }
       }
       if (height) {
@@ -350,16 +368,27 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
     });
   };
 
-  const fallbackGuide = (() => {
-    if (!markerDrag || !lastMarkerSectionId) return { x: null, y: null };
+  const [fallbackGuide, setFallbackGuide] = useState<{ x: number | null; y: number | null }>(
+    { x: null, y: null }
+  );
+
+  useEffect(() => {
+    if (!markerDrag || !lastMarkerSectionId) {
+      setFallbackGuide({ x: null, y: null });
+      return;
+    }
     const sectionEl = sectionRefs.current[lastMarkerSectionId];
-    if (!sectionEl) return { x: null, y: null };
+    if (!sectionEl) {
+      setFallbackGuide({ x: null, y: null });
+      return;
+    }
     const rect = sectionEl.getBoundingClientRect();
-    return {
+    setFallbackGuide({
       x: rect.left + markerX,
       y: rect.top + markerY,
-    };
-  })();
+    });
+  }, [markerDrag, lastMarkerSectionId, markerX, markerY]);
+
   const guideX = pageGuide.x ?? fallbackGuide.x;
   const guideY = pageGuide.y ?? fallbackGuide.y;
 
@@ -437,6 +466,14 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
               />
               Show rulers
             </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showGrid}
+                onChange={(event) => setShowGrid(event.target.checked)}
+              />
+              Show grid
+            </label>
             <button
               className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.3em] ${
                 multiSelect
@@ -472,6 +509,9 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
         ) : null}
 
         <div ref={menuCanvasRef} className="relative mt-10 grid gap-8 lg:grid-cols-2">
+          {showGrid ? (
+            <div className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(to_right,rgba(245,158,11,0.2)_1px,transparent_1px),linear-gradient(to_bottom,rgba(245,158,11,0.2)_1px,transparent_1px)] [background-size:40px_40px]" />
+          ) : null}
           {menuBlock.data.sections.map((section) => {
             const coords = section.items.flatMap((item) => [
               item.namePos?.y ?? 0,
@@ -483,7 +523,7 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
             return (
               <section
                 key={section.id}
-                className="relative rounded-3xl border border-stone-200 bg-stone-50/80 p-6"
+                className="relative z-10 rounded-3xl border border-stone-200 bg-stone-50/80 p-6"
                 style={{ minHeight }}
                 ref={(el: HTMLElement | null) => {
                   sectionRefs.current[section.id] = el;
@@ -511,10 +551,6 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
                   {section.title}
                 </h2>
                 <div className="relative mt-4">
-                  <div
-                    className="pointer-events-none absolute inset-0 rounded-2xl border border-dashed border-amber-300/60 bg-[linear-gradient(to_right,rgba(245,158,11,0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgba(245,158,11,0.18)_1px,transparent_1px)] [background-size:40px_40px]"
-                    style={{ marginTop: 4 }}
-                  />
                   {showRulers ? (
                     <>
                       <div

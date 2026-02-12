@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createBrowserClient } from "@/lib/supabase/browser";
 import { defaultContent, defaultGlobals } from "@/lib/content/defaults";
 import { GlobalSettings, PageContent } from "@/lib/content/types";
@@ -122,12 +123,12 @@ export default function PreviewClient() {
               >
                 {saving ? "Saving..." : "Save draft"}
               </button>
-              <a
+              <Link
                 className="rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold text-stone-700"
                 href="/admin"
               >
                 Back to admin
-              </a>
+              </Link>
             </div>
           </div>
           <InlineEditor

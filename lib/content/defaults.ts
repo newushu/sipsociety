@@ -19,6 +19,7 @@ export const defaultContent: PageContent = {
         videoDesaturate: 0.6,
         tagline: "Slow sips. Bright ideas.",
         showTagline: true,
+        taglineRich: false,
         taglineStyle: { size: 48, weight: 600, italic: false, x: 0, y: 0 },
         logoScale: 1,
         logoBoxScale: 1,
@@ -45,10 +46,12 @@ export const defaultContent: PageContent = {
         bgVideoFeather: 0.12,
         bgVideoDesaturate: 0.4,
         heading: "Our brand message",
+        headingRich: false,
         showHeading: true,
         headingStyle: { size: 12, weight: 600, italic: false, x: 0, y: 0 },
         message:
           "Sip Society is a third place for creatives. Thoughtful drinks, slow moments, and bright ideas.",
+        messageRich: true,
         showMessage: true,
         messageStyle: { size: 30, weight: 600, italic: false, x: 0, y: 0 },
         icon: "coffee",
@@ -66,13 +69,16 @@ export const defaultContent: PageContent = {
       type: "triple-media",
       data: {
         leftTitle: "Seasonal ritual",
+        leftTitleRich: true,
         leftTitleStyle: { size: 30, weight: 600, italic: false, x: 0, y: 0 },
         leftBody:
           "Small-lot roasts and curated teas. The bar rotates weekly with new notes.",
+        leftBodyRich: true,
         leftBodyStyle: { size: 16, weight: 500, italic: false, x: 0, y: 0 },
         leftAccent: "#c07a4a",
         leftLogoScale: 1,
         leftLogoBoxScale: 1,
+        leftLogoMaxPx: 180,
         leftLogoX: 0,
         leftLogoY: 0,
         middleMedia: {
@@ -108,6 +114,7 @@ export const defaultContent: PageContent = {
           scale: 1,
         },
         caption: "An atmosphere built for slow sips and bright ideas.",
+        captionRich: false,
         captionStyle: { size: 18, weight: 600, italic: false, x: 0, y: 0 },
       },
     },
@@ -120,10 +127,12 @@ export const defaultContent: PageContent = {
         taglineStyle: { size: 14, weight: 500, italic: false, x: 0, y: 0 },
         linkStyle: { size: 13, weight: 600, italic: false, x: 0, y: 0 },
         leadText: "Join our list for seasonal drops and cafe events.",
+        leadTextRich: false,
         leadStyle: { size: 16, weight: 600, italic: false, x: 0, y: 0 },
         joinLabel: "Join us",
         leadPlaceholder: "Enter your email",
         leadButtonText: "Join",
+        leadButtonTextRich: false,
         showLeadLogo: true,
         links: [
           { label: "Instagram", href: "#" },
@@ -293,10 +302,26 @@ export const defaultGalleryContent: PageContent = {
   gallery: {
     heading: "Gallery",
     subheading: "Customer favorites, cafe moments, and rotating seasonal drops.",
+    heroLeft: {
+      url: "",
+      alt: "",
+      type: "image",
+      x: 50,
+      y: 50,
+      scale: 1,
+    },
+    heroRight: {
+      url: "",
+      alt: "",
+      type: "video",
+      x: 50,
+      y: 50,
+      scale: 1,
+    },
     rows: [
       {
         id: "gallery-row-1",
-        items: Array.from({ length: 6 }).map((_, index) => ({
+        items: Array.from({ length: 5 }).map((_, index) => ({
           id: `gallery-1-${index + 1}`,
           url: "",
           alt: "",
@@ -306,7 +331,7 @@ export const defaultGalleryContent: PageContent = {
       },
       {
         id: "gallery-row-2",
-        items: Array.from({ length: 6 }).map((_, index) => ({
+        items: Array.from({ length: 5 }).map((_, index) => ({
           id: `gallery-2-${index + 1}`,
           url: "",
           alt: "",
@@ -326,9 +351,36 @@ export const defaultGalleryContent: PageContent = {
   },
 };
 
+export const defaultContactContent: PageContent = {
+  title: "Contact us",
+  blocks: [],
+  contact: {
+    backgroundUrl:
+      "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=2000&auto=format&fit=crop",
+    backgroundType: "image",
+    backgroundX: 50,
+    backgroundY: 50,
+    backgroundScale: 1,
+    heading: "Contact us",
+    body: "Plan a tasting, reserve the lounge, or just say hi. We reply within 1 business day.",
+    label: "Your email",
+    placeholder: "you@email.com",
+    messageLabel: "Your message",
+    messagePlaceholder: "Type your message...",
+    buttonText: "Send message",
+    boxColor: "#ffffff",
+    boxOpacity: 0.92,
+    boxTextColor: "#1c1917",
+    buttonColor: "#111827",
+    buttonTextColor: "#ffffff",
+  },
+};
+
 export const defaultAboutContent: AboutContent = {
   heroImageUrl:
     "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=2000&auto=format&fit=crop",
+  heroVideoUrl: "",
+  heroMediaType: "image",
   heroOverlayOpacity: 0.55,
   heroLogoUrl: "",
   heroLogoScale: 1,
@@ -399,6 +451,7 @@ export const defaultGlobals: GlobalSettings = {
   motto: "Slow sips. Bright ideas.",
   brandMessage:
     "Sip Society is a third place for creatives. Thoughtful drinks, slow moments, and bright ideas.",
+  brandMessageRich: true,
   logoTextStyle: { size: 12, weight: 600, italic: false, x: 0, y: 0 },
   mottoStyle: { size: 40, weight: 600, italic: false, x: 0, y: 0 },
   brandMessageStyle: { size: 30, weight: 600, italic: false, x: 0, y: 0 },
@@ -418,6 +471,17 @@ export const defaultGlobals: GlobalSettings = {
   introLogoScale: 1,
   introLogoX: 0,
   introLogoY: 0,
+  introLogoTextRich: true,
+  introMottoRich: true,
+  introLogoTextHtml: "",
+  introMottoHtml: "",
+  introBody:
+    "A modern coffee and tea collective for makers, listeners, and late-night sketches.",
+  introBodyRich: true,
+  introBodyHtml: "",
+  introBody2: "Come for the ritual, stay for the quiet ideas.",
+  introBody2Rich: true,
+  introBody2Html: "",
   menuButtonText: "MENU",
   menuButtonTextColor: "#1c1917",
   menuButtonBorderColor: "#d6d3d1",
