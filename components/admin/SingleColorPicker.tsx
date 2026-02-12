@@ -22,7 +22,7 @@ export default function SingleColorPicker({ value, onChange, label = "Text color
   const selectionRangeRef = useRef<Range | null>(null);
   const selectionRootRef = useRef<HTMLElement | null>(null);
   const hasSelection = () => !!selectionRangeRef.current;
-  const [, setDragActive] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   const captureSelection = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -117,13 +117,13 @@ export default function SingleColorPicker({ value, onChange, label = "Text color
               Selection
             </span>
           </div>
-          <ColorPalette
-            value={displayColor}
-            logRecent
-            onDragStart={() => {
-              setDragging(true);
-              captureSelection();
-            }}
+            <ColorPalette
+              value={displayColor}
+              logRecent
+              onDragStart={() => {
+                setDragging(true);
+                captureSelection();
+              }}
             onDragMove={() => restoreSelection()}
             onDragEnd={() => {
               setDragging(false);
@@ -146,16 +146,16 @@ export default function SingleColorPicker({ value, onChange, label = "Text color
               Global
             </span>
           </div>
-          <ColorPalette
-            value={displayColor}
-            logRecent={false}
-            onDragStart={() => setDragging(true)}
-            onDragEnd={() => setDragging(false)}
-            onChange={(next) => {
-              setDisplayColor(next);
-              onChange(next);
-            }}
-          />
+            <ColorPalette
+              value={displayColor}
+              logRecent={false}
+              onDragStart={() => setDragging(true)}
+              onDragEnd={() => setDragging(false)}
+              onChange={(next) => {
+                setDisplayColor(next);
+                onChange(next);
+              }}
+            />
         </>
       )}
     </div>

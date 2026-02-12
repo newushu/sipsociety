@@ -230,7 +230,7 @@ export default function RichTextEditor({
     return () => {
       document.removeEventListener("selectionchange", handleSelection);
     };
-  }, []);
+  }, [rememberSelection]);
 
   useEffect(() => {
     const handleExternalSelection = (

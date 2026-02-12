@@ -776,11 +776,13 @@ export default function GalleryInlinePreview({
                       <select
                         className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs"
                         value={item.commentDisplay ?? "hover"}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const value =
+                            event.target.value === "always" ? "always" : "hover";
                           updateItem(active.rowId, active.index, {
-                            commentDisplay: event.target.value,
-                          })
-                        }
+                            commentDisplay: value,
+                          });
+                        }}
                       >
                         <option value="hover">Show on hover</option>
                         <option value="always">Always show</option>
