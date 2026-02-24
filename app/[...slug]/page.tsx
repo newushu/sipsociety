@@ -4,8 +4,7 @@ import SiteFooter from "@/components/SiteFooter";
 import { getPublishedContentOrNull, getPublishedGlobals } from "@/lib/content/store";
 import { redirect } from "next/navigation";
 
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 type Props = {
   params: Promise<{ slug: string[] }>;

@@ -94,27 +94,16 @@ export default function BrandMessageSection({
   animationPlayId,
 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [active, setActive] = useState(false);
   const [animActive, setAnimActive] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActive(true);
-          }
-        });
-      },
-      { threshold: 0.4 }
-    );
-
-    observer.observe(node);
-
-    return () => observer.disconnect();
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
 
   useEffect(() => {
@@ -157,6 +146,14 @@ export default function BrandMessageSection({
   const mask = feather
     ? `radial-gradient(circle at center, black 0%, black ${100 - feather * 100}%, transparent 100%)`
     : undefined;
+  const boxHue = block.data.messageBoxHue ?? 42;
+  const boxSaturation = block.data.messageBoxSaturation ?? 18;
+  const boxLightness = block.data.messageBoxLightness ?? 98;
+  const logoX = Math.max(-40, Math.min(40, logo?.x ?? 0));
+  const logoY = Math.max(6, Math.min(36, logo?.y ?? 0));
+  const logoScale = Math.max(0.6, Math.min(1.8, logo?.scale ?? 1));
+  const logoBoxScale = Math.max(0.7, Math.min(2.1, logo?.boxScale ?? 1));
+  const showTopImage = topImage?.url && topImage.url !== logo?.imageUrl;
 
   return (
     <section
@@ -164,10 +161,11 @@ export default function BrandMessageSection({
       ref={ref}
       data-edit="brandAnimation"
       data-block-index={dataBlockIndex}
-      className={`relative flex min-h-[50vh] flex-col items-center justify-center gap-6 rounded-[48px] border border-stone-200 bg-white/70 px-6 py-16 text-center shadow-xl shadow-amber-900/5 brand-anim brand-anim-${animationType} ${
+      className={`relative flex min-h-[50vh] flex-col items-center justify-center gap-6 overflow-hidden rounded-[48px] border border-stone-200 px-6 pb-16 pt-24 text-center shadow-xl shadow-amber-900/5 brand-anim brand-anim-${animationType} sm:pt-28 ${
         animActive ? "is-revealed" : ""
       } ${className ?? ""}`}
       style={{
+        backgroundColor: `hsl(${boxHue}, ${boxSaturation}%, ${boxLightness}%)`,
         borderColor: border?.enabled ? border.color : "transparent",
         borderWidth: border?.enabled ? border.width : 0,
       }}
@@ -197,7 +195,7 @@ export default function BrandMessageSection({
           />
         ) : null}
       </div>
-      {topImage?.url ? (
+      {showTopImage ? (
         <div
           data-edit="brandTopImage"
           data-block-index={dataBlockIndex}
@@ -209,26 +207,24 @@ export default function BrandMessageSection({
             <img
               src={topImage.url}
               alt={topImage.alt ?? "Brand image"}
-              className="h-56 w-full rounded-[32px] object-cover shadow-lg"
+              className="h-28 w-full rounded-[20px] object-contain sm:h-36"
             />
           )}
         </div>
       ) : null}
       {showLogoMark ? (
-        <div className="relative z-20 inline-flex items-center justify-center">
+        <div className="relative z-20 mt-2 inline-flex flex-col items-center justify-center gap-2 sm:mt-4">
           {wrapLink(
             logoLink?.enabled,
             logoLink?.url,
             <div
               data-edit="brandLogo"
               data-block-index={dataBlockIndex}
-              className={`flex h-16 w-16 items-center justify-center text-[10px] font-semibold tracking-[0.3em] transition-all duration-700 ${
-                active ? "scale-110 text-amber-700" : "scale-90 text-stone-400"
-              } ${
+              className={`flex h-28 w-28 items-center justify-center overflow-hidden p-2 text-[10px] font-semibold tracking-[0.3em] text-stone-400 ${
                 showLogoBox ? "rounded-full border border-amber-200/60" : ""
-              } outline outline-1 outline-transparent transition hover:outline-amber-300/70`}
+              }`}
               style={{
-                transform: `scale(${logo?.boxScale ?? 1})`,
+                transform: `scale(${logoBoxScale})`,
               }}
               onClick={onLogoSelect}
               onPointerDown={onLogoDragStart}
@@ -237,15 +233,15 @@ export default function BrandMessageSection({
                 <img
                   src={logo.imageUrl}
                   alt={`${logo.text} logo`}
-                  className="h-12 w-12 rounded-full object-cover"
+                  className="h-full w-full object-contain"
                   style={{
-                    transform: `translate(${logo?.x ?? 0}%, ${logo?.y ?? 0}%) scale(${logo?.scale ?? 1})`,
+                    transform: `translate(${logoX}%, ${logoY}%) scale(${logoScale})`,
                   }}
                 />
               ) : logo?.mark ? (
                 <span
                   style={{
-                    transform: `translate(${logo?.x ?? 0}%, ${logo?.y ?? 0}%) scale(${logo?.scale ?? 1})`,
+                    transform: `translate(${logoX}%, ${logoY}%) scale(${logoScale})`,
                   }}
                 >
                   {logo.mark}
@@ -258,18 +254,13 @@ export default function BrandMessageSection({
             </div>
           )}
           {logoControls ? (
-            <div className="absolute -right-2 top-1/2 -translate-y-1/2 translate-x-full">
+            <div className="relative z-30 mt-2 flex justify-center">
               {logoControls}
             </div>
           ) : null}
         </div>
       ) : null}
-      <div className="relative z-20 inline-flex flex-col items-center">
-        {headingControls ? (
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full">
-            {headingControls}
-          </div>
-        ) : null}
+      <div className="relative z-20 mt-8 inline-flex flex-col items-center sm:mt-10">
         {wrapLink(
           headingLink?.enabled,
           headingLink?.url,
@@ -278,9 +269,7 @@ export default function BrandMessageSection({
               block.data.headingRich && block.data.headingHtml
                 ? { __html: sanitizeRichHtml(block.data.headingHtml) }
                 : null;
-            const className = onHeadingChange
-              ? "text-xs font-semibold uppercase tracking-[0.35em] text-stone-500 outline outline-1 outline-transparent transition hover:outline-amber-300/70"
-              : "text-xs font-semibold uppercase tracking-[0.35em] text-stone-500";
+            const className = "text-xs font-semibold uppercase tracking-[0.35em] text-stone-500";
             return (
               <p
                 data-edit="brandHeading"
@@ -295,13 +284,13 @@ export default function BrandMessageSection({
             );
           })()
         )}
-      </div>
-      <div className="relative z-20 inline-flex flex-col items-center">
-        {messageControls ? (
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full">
-            {messageControls}
+        {headingControls ? (
+          <div className="relative z-30 mt-2 flex justify-center">
+            {headingControls}
           </div>
         ) : null}
+      </div>
+      <div className="relative z-20 mt-4 inline-flex flex-col items-center sm:mt-6">
         {wrapLink(
           messageLink?.enabled,
           messageLink?.url,
@@ -310,19 +299,31 @@ export default function BrandMessageSection({
               messageOverrideRich ?? block.data.messageRich ?? false;
             const html =
               messageOverrideHtml ?? block.data.messageHtml ?? undefined;
+            const baseMessageStyle = { ...(messageStyle ?? {}) };
+            if (isMobileViewport) {
+              delete baseMessageStyle.transform;
+            }
             const messageBoxStyle: CSSProperties = {
-              ...messageStyle,
+              ...baseMessageStyle,
               width: block.data.messageBoxWidthPx
-                ? `${block.data.messageBoxWidthPx}px`
+                ? `min(100%, ${block.data.messageBoxWidthPx}px)`
                 : undefined,
               minHeight: block.data.messageBoxHeightPx
                 ? `${block.data.messageBoxHeightPx}px`
                 : undefined,
-              maxWidth: block.data.messageBoxWidthPx ? undefined : "42rem",
+              maxWidth: block.data.messageBoxWidthPx
+                ? `min(100%, ${block.data.messageBoxWidthPx}px)`
+                : "min(42rem, calc(100vw - 3rem))",
+              marginLeft: "auto",
+              marginRight: "auto",
+              textAlign: "center",
             };
-            const className = onMessageChange
-              ? "text-2xl font-semibold text-stone-900 outline outline-1 outline-transparent transition hover:outline-amber-300/70 sm:text-3xl"
-              : "text-2xl font-semibold text-stone-900 sm:text-3xl";
+            if (isMobileViewport) {
+              messageBoxStyle.width = "auto";
+              messageBoxStyle.maxWidth = "calc(100vw - 4.5rem)";
+            }
+            const className =
+              "mx-auto max-w-full break-words px-2 text-center text-2xl font-semibold text-stone-900 sm:text-3xl";
             return (
               <h2
                 data-edit="brandMessage"
@@ -339,6 +340,11 @@ export default function BrandMessageSection({
             );
           })()
         )}
+        {messageControls ? (
+          <div className="relative z-30 mt-2 flex justify-center">
+            {messageControls}
+          </div>
+        ) : null}
       </div>
     </section>
   );

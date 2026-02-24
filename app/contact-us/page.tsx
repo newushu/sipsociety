@@ -4,8 +4,7 @@ import SiteFooter from "@/components/SiteFooter";
 import { defaultContactContent } from "@/lib/content/defaults";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
 
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function ContactPage() {
   const globals = await getPublishedGlobals();

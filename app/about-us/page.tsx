@@ -6,8 +6,7 @@ import { getPublishedContentOrNull, getPublishedGlobals } from "@/lib/content/st
 import { fontFamilyForKey } from "@/lib/content/fonts";
 import type { TextStyle } from "@/lib/content/types";
 
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function AboutPage() {
   const globals = await getPublishedGlobals();

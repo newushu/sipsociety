@@ -5,7 +5,7 @@ import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
 import { fontFamilyForKey } from "@/lib/content/fonts";
 import type { TextStyle } from "@/lib/content/types";
 
-export const revalidate = 0;
+export const revalidate = 60;
 
 export default async function Home() {
   const content = await getPublishedContent();

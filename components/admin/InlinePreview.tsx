@@ -142,6 +142,8 @@ const mapEditToTarget = (
   }
 };
 
+const shouldRenderOverlayForEdit = (edit: string) => edit !== "brandAnimation";
+
 export default function InlinePreview({
   content,
   globals,
@@ -793,6 +795,7 @@ export default function InlinePreview({
       const edit = node.dataset.edit;
       const blockIndex = Number(node.dataset.blockIndex);
       if (!edit || Number.isNaN(blockIndex)) return;
+      if (!shouldRenderOverlayForEdit(edit)) return;
       const target = mapEditToTarget(edit, blockIndex);
       if (!target) return;
       const rect = node.getBoundingClientRect();
@@ -992,8 +995,9 @@ export default function InlinePreview({
           !(active && overlay.target.kind === "text") &&
           overlay.target.scope !== "brandBgVideo" &&
           overlay.target.scope !== "brandAnimation";
+        const showHighlight = overlay.target.scope !== "brandLogo";
         const highlightClass = `${overlayBoxBase} ${
-          active || hovered ? "border-amber-300" : "border-transparent"
+          showHighlight && (active || hovered) ? "border-amber-300" : "border-transparent"
         }`;
         const offset = chipOffsets[overlay.id] ?? { x: 0, y: 0 };
         return (

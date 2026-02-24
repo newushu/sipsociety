@@ -5,8 +5,9 @@ import { normalizeMenuBlock } from "@/lib/content/menu";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
 import { fontFamilyForKey } from "@/lib/content/fonts";
 import { MenuBlock, TextStyle } from "@/lib/content/types";
+import ZoomableMenuImage from "@/components/menu/ZoomableMenuImage";
 
-export const revalidate = 0;
+export const revalidate = 60;
 
 export default async function MenuPage() {
   const content = await getPublishedContent("menu");
@@ -57,98 +58,50 @@ export default async function MenuPage() {
               ]
         }
       />
-      <main className="mx-auto max-w-5xl px-6 py-16">
-        <div className="rounded-[36px] border border-stone-200 bg-white/90 p-10 shadow-xl shadow-amber-900/10">
-          <p
-            className="text-xs font-semibold uppercase tracking-[0.5em] text-amber-500/80"
-            style={styleFrom(globals.logoTextStyle)}
-          >
-            Sip Society Menu
+      <main className="px-4 py-16 sm:px-6">
+        <div className="mx-auto mb-8 max-w-6xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-stone-500">
+            Menu
           </p>
-          <h1 className="mt-4 text-4xl font-semibold text-stone-900 sm:text-5xl">
-            <span style={styleFrom(menuBlock.data.headingStyle)}>
-              {menuBlock.data.heading}
-            </span>
+          <h1
+            className="mt-3 text-3xl font-semibold text-stone-900 sm:text-5xl"
+            style={styleFrom(menuBlock.data.headingStyle)}
+          >
+            {menuBlock.data.heading}
           </h1>
-          <p
-            className="mt-3 max-w-2xl text-sm text-stone-600"
-            style={styleFrom(menuBlock.data.subheadingStyle)}
-          >
-            {menuBlock.data.subheading}
-          </p>
-          {menuBlock.data.note ? (
-            <div className="mt-6 rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm text-stone-600">
-              <span style={styleFrom(menuBlock.data.noteStyle)}>
-                {menuBlock.data.note}
-              </span>
+          {menuBlock.data.subheading ? (
+            <p
+              className="mt-3 max-w-3xl text-sm text-stone-600 sm:text-base"
+              style={styleFrom(menuBlock.data.subheadingStyle)}
+            >
+              {menuBlock.data.subheading}
+            </p>
+          ) : null}
+        </div>
+        <div
+          className="mx-auto flex max-w-6xl flex-col"
+          style={{ gap: `${menuBlock.data.menuImageGapPx ?? 20}px` }}
+        >
+          {menuBlock.data.menuImageOneUrl ? (
+            <div className="-mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6">
+              <ZoomableMenuImage
+                src={menuBlock.data.menuImageOneUrl}
+                alt={menuBlock.data.menuImageOneAlt || "Menu image one"}
+                widthPx={menuBlock.data.menuImageOneWidthPx ?? 760}
+                heightPx={menuBlock.data.menuImageHeightPx ?? 430}
+              />
             </div>
           ) : null}
-          <div className="mt-10 grid gap-8 lg:grid-cols-2">
-            {menuBlock.data.sections.map((section) => {
-              const coords = section.items.flatMap((item) => [
-                item.namePos?.y ?? 0,
-                item.detailPos?.y ?? 0,
-                item.pricePos?.y ?? 0,
-              ]);
-              const maxY = coords.length ? Math.max(...coords) : 0;
-              const minHeight = Math.max(220, maxY + 80);
-              return (
-              <section
-                key={section.id}
-                className="relative rounded-3xl border border-stone-200 bg-stone-50/80 p-6"
-                style={{ minHeight }}
-              >
-                <h2
-                  className="text-lg font-semibold text-stone-800"
-                  style={styleFrom(menuBlock.data.sectionTitleStyle)}
-                >
-                  {section.title}
-                </h2>
-                <div className="relative mt-4">
-                  {section.items.map((item) => (
-                    <div key={item.id} className="relative">
-                      <div
-                        className="absolute left-0 top-0 text-sm font-semibold text-stone-900"
-                        style={{
-                          transform: `translate(${item.namePos?.x ?? 0}px, ${
-                            item.namePos?.y ?? 0
-                          }px)`,
-                          ...(styleFrom(menuBlock.data.itemNameStyle) ?? {}),
-                        }}
-                      >
-                        {item.name}
-                      </div>
-                      <div
-                        className="absolute left-0 top-0 text-xs text-stone-500"
-                        style={{
-                          transform: `translate(${item.detailPos?.x ?? 0}px, ${
-                            item.detailPos?.y ?? 0
-                          }px)`,
-                          ...(styleFrom(menuBlock.data.itemDetailStyle) ?? {}),
-                        }}
-                      >
-                        {item.detail}
-                      </div>
-                      {menuBlock.data.showPrices !== false && item.showPrice !== false ? (
-                        <div
-                        className="absolute left-0 top-0 text-sm font-semibold text-stone-700"
-                        style={{
-                          transform: `translate(${item.pricePos?.x ?? 0}px, ${
-                            item.pricePos?.y ?? 0
-                          }px)`,
-                          ...(styleFrom(menuBlock.data.itemPriceStyle) ?? {}),
-                        }}
-                      >
-                          {item.price}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </section>
-              );
-            })}
-          </div>
+          {menuBlock.data.menuImageTwoUrl ? (
+            <div className="-mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6">
+              <ZoomableMenuImage
+                src={menuBlock.data.menuImageTwoUrl}
+                alt={menuBlock.data.menuImageTwoAlt || "Menu image two"}
+                widthPx={menuBlock.data.menuImageTwoWidthPx ?? 760}
+                heightPx={menuBlock.data.menuImageHeightPx ?? 430}
+              />
+            </div>
+          ) : null}
         </div>
       </main>
       <SiteFooter

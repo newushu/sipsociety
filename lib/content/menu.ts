@@ -47,12 +47,28 @@ export const normalizeMenuBlock = (
   });
 
   if (block.data.showPrices === undefined) changed = true;
+  if (block.data.menuImageOneUrl === undefined) changed = true;
+  if (block.data.menuImageOneAlt === undefined) changed = true;
+  if (block.data.menuImageTwoUrl === undefined) changed = true;
+  if (block.data.menuImageTwoAlt === undefined) changed = true;
+  if (block.data.menuImageOneWidthPx === undefined) changed = true;
+  if (block.data.menuImageTwoWidthPx === undefined) changed = true;
+  if (block.data.menuImageHeightPx === undefined) changed = true;
+  if (block.data.menuImageGapPx === undefined) changed = true;
 
   return {
     block: {
       ...block,
       data: {
         ...block.data,
+        menuImageOneUrl: block.data.menuImageOneUrl ?? "",
+        menuImageOneAlt: block.data.menuImageOneAlt ?? "Menu image one",
+        menuImageTwoUrl: block.data.menuImageTwoUrl ?? "",
+        menuImageTwoAlt: block.data.menuImageTwoAlt ?? "Menu image two",
+        menuImageOneWidthPx: block.data.menuImageOneWidthPx ?? 760,
+        menuImageTwoWidthPx: block.data.menuImageTwoWidthPx ?? 760,
+        menuImageHeightPx: block.data.menuImageHeightPx ?? 430,
+        menuImageGapPx: block.data.menuImageGapPx ?? 20,
         showPrices: block.data.showPrices ?? true,
         sections,
       },

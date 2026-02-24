@@ -7,8 +7,7 @@ import { getPublishedContentOrNull, getPublishedGlobals } from "@/lib/content/st
 import { TextStyle } from "@/lib/content/types";
 import { createServerClient } from "@/lib/supabase/server";
 
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function CareerPage() {
   const globals = await getPublishedGlobals();

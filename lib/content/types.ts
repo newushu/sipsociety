@@ -107,6 +107,14 @@ export type MenuBlock = {
     itemNameStyle?: TextStyle;
     itemDetailStyle?: TextStyle;
     itemPriceStyle?: TextStyle;
+    menuImageOneUrl?: string;
+    menuImageOneAlt?: string;
+    menuImageTwoUrl?: string;
+    menuImageTwoAlt?: string;
+    menuImageOneWidthPx?: number;
+    menuImageTwoWidthPx?: number;
+    menuImageHeightPx?: number;
+    menuImageGapPx?: number;
     showPrices?: boolean;
     sections: MenuSection[];
   };
@@ -177,6 +185,10 @@ export type BrandMessageBlock = {
     messageLinkUrl?: string;
     messageBoxWidthPx?: number;
     messageBoxHeightPx?: number;
+    messageBoxHue?: number;
+    messageBoxSaturation?: number;
+    messageBoxLightness?: number;
+    messageBoxOpacity?: number;
     icon: "coffee";
     logoScale?: number;
     logoBoxScale?: number;

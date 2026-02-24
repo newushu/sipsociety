@@ -7,11 +7,14 @@ import { fontFamilyForKey, fontOptions } from "@/lib/content/fonts";
 import { normalizeMenuBlock } from "@/lib/content/menu";
 import { GlobalSettings, MenuBlock, PageContent, TextStyle } from "@/lib/content/types";
 import ColorPicker from "@/components/admin/ColorPicker";
+import { createBrowserClient } from "@/lib/supabase/browser";
 
 type Props = {
   content: PageContent;
   globals: GlobalSettings;
-  onChangeContent: (content: PageContent) => void;
+  onChangeContent: (
+    content: PageContent | ((prev: PageContent) => PageContent)
+  ) => void;
 };
 
 type FieldKey = `${string}::${string}::${"name" | "detail" | "price"}`;
@@ -31,26 +34,13 @@ const parseFieldKey = (key: FieldKey) => {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export default function MenuInlinePreview({ content, globals: _globals, onChangeContent }: Props) {
+  const supabase = useMemo(() => createBrowserClient(), []);
   const menuBlockIndex = content.blocks.findIndex((block) => block.type === "menu");
   const baseBlock =
     (menuBlockIndex >= 0 ? (content.blocks[menuBlockIndex] as MenuBlock) : null) ??
     (defaultMenuContent.blocks[0] as MenuBlock);
   const normalized = useMemo(() => normalizeMenuBlock(baseBlock), [baseBlock]);
   const menuBlock = normalized.block;
-
-  useEffect(() => {
-    if (menuBlockIndex < 0) {
-      onChangeContent({ ...content, blocks: [menuBlock, ...content.blocks] });
-      return;
-    }
-    if (!normalized.changed) return;
-    onChangeContent({
-      ...content,
-      blocks: content.blocks.map((block, index) =>
-        index === menuBlockIndex ? menuBlock : block
-      ),
-    });
-  }, [content, menuBlock, menuBlockIndex, normalized.changed, onChangeContent]);
 
   const [multiSelect, setMultiSelect] = useState(false);
   const [showRulers, setShowRulers] = useState(false);
@@ -84,11 +74,17 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
   });
 
   const menuCanvasRef = useRef<HTMLDivElement | null>(null);
+  const imageOneUploadRef = useRef<HTMLInputElement | null>(null);
+  const imageTwoUploadRef = useRef<HTMLInputElement | null>(null);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const fieldRefs = useRef<Record<FieldKey, HTMLDivElement | null>>({} as Record<
     FieldKey,
     HTMLDivElement | null
   >);
+  const [uploadingImage, setUploadingImage] = useState<1 | 2 | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [libraryAssets, setLibraryAssets] = useState<{ name: string; url: string }[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
 
   useEffect(() => {
     if (!lastMarkerSectionId && menuBlock.data.sections[0]) {
@@ -97,17 +93,77 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
   }, [lastMarkerSectionId, menuBlock.data.sections]);
 
   const updateMenuBlock = (nextBlock: MenuBlock) => {
-    const nextContent =
-      menuBlockIndex >= 0
-        ? {
-            ...content,
-            blocks: content.blocks.map((block, index) =>
-              index === menuBlockIndex ? nextBlock : block
-            ),
-          }
-        : { ...content, blocks: [nextBlock, ...content.blocks] };
-    onChangeContent(nextContent);
+    onChangeContent((prev) => {
+      const index = prev.blocks.findIndex((block) => block.type === "menu");
+      if (index < 0) {
+        return { ...prev, blocks: [nextBlock, ...prev.blocks] };
+      }
+      return {
+        ...prev,
+        blocks: prev.blocks.map((block, i) => (i === index ? nextBlock : block)),
+      };
+    });
   };
+
+  const uploadMenuImage = async (which: 1 | 2, file: File) => {
+    setUploadingImage(which);
+    setUploadError(null);
+    const fileName = `${Date.now()}-${file.name}`.replace(/\s+/g, "-");
+    const { error } = await supabase.storage.from("media").upload(fileName, file, {
+      upsert: true,
+    });
+    if (error) {
+      setUploadError(error.message);
+      setUploadingImage(null);
+      return;
+    }
+    const publicUrl = supabase.storage.from("media").getPublicUrl(fileName).data.publicUrl;
+    onChangeContent((prev) => {
+      const index = prev.blocks.findIndex((block) => block.type === "menu");
+      const fallback = defaultMenuContent.blocks[0] as MenuBlock;
+      const current = (index >= 0 ? prev.blocks[index] : fallback) as MenuBlock;
+      const next = {
+        ...current,
+        data:
+          which === 1
+            ? { ...current.data, menuImageOneUrl: publicUrl }
+            : { ...current.data, menuImageTwoUrl: publicUrl },
+      };
+      return {
+        ...prev,
+        blocks:
+          index < 0
+            ? [next, ...prev.blocks]
+            : prev.blocks.map((block, i) => (i === index ? next : block)),
+      };
+    });
+    setUploadingImage(null);
+  };
+
+  const loadLibraryAssets = async () => {
+    setLibraryLoading(true);
+    const { data, error } = await supabase.storage.from("media").list("", {
+      limit: 200,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+    if (error) {
+      setLibraryLoading(false);
+      return;
+    }
+    setLibraryAssets(
+      (data ?? [])
+        .map((item) => ({
+          name: item.name,
+          url: supabase.storage.from("media").getPublicUrl(item.name).data.publicUrl,
+        }))
+        .filter((item) => /\.(png|jpe?g|webp|gif|avif|svg)(\?.*)?$/i.test(item.url))
+    );
+    setLibraryLoading(false);
+  };
+
+  useEffect(() => {
+    void loadLibraryAssets();
+  }, []);
 
   const updateItem = (
     sectionId: string,
@@ -488,6 +544,300 @@ export default function MenuInlinePreview({ content, globals: _globals, onChange
               type="button"
             >
               Multi select
+            </button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:grid-cols-2">
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Menu image 1 URL
+            <input
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs normal-case tracking-normal text-stone-700"
+              value={menuBlock.data.menuImageOneUrl ?? ""}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: { ...menuBlock.data, menuImageOneUrl: event.target.value },
+                })
+              }
+              placeholder="https://..."
+            />
+            <input
+              ref={imageOneUploadRef}
+              className="hidden"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void uploadMenuImage(1, file);
+                }
+                if (imageOneUploadRef.current) imageOneUploadRef.current.value = "";
+              }}
+            />
+            <button
+              className="mt-2 inline-flex rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-700"
+              type="button"
+              onClick={() => imageOneUploadRef.current?.click()}
+            >
+              {uploadingImage === 1 ? "Uploading..." : "Upload image 1"}
+            </button>
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Menu image 2 URL
+            <input
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs normal-case tracking-normal text-stone-700"
+              value={menuBlock.data.menuImageTwoUrl ?? ""}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: { ...menuBlock.data, menuImageTwoUrl: event.target.value },
+                })
+              }
+              placeholder="https://..."
+            />
+            <input
+              ref={imageTwoUploadRef}
+              className="hidden"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void uploadMenuImage(2, file);
+                }
+                if (imageTwoUploadRef.current) imageTwoUploadRef.current.value = "";
+              }}
+            />
+            <button
+              className="mt-2 inline-flex rounded-full border border-stone-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-700"
+              type="button"
+              onClick={() => imageTwoUploadRef.current?.click()}
+            >
+              {uploadingImage === 2 ? "Uploading..." : "Upload image 2"}
+            </button>
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Image 1 alt
+            <input
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs normal-case tracking-normal text-stone-700"
+              value={menuBlock.data.menuImageOneAlt ?? ""}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: { ...menuBlock.data, menuImageOneAlt: event.target.value },
+                })
+              }
+              placeholder="Menu image one"
+            />
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Image 2 alt
+            <input
+              className="mt-2 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs normal-case tracking-normal text-stone-700"
+              value={menuBlock.data.menuImageTwoAlt ?? ""}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: { ...menuBlock.data, menuImageTwoAlt: event.target.value },
+                })
+              }
+              placeholder="Menu image two"
+            />
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Image 1 width ({Math.round(menuBlock.data.menuImageOneWidthPx ?? 760)}px)
+            <input
+              className="mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500"
+              type="range"
+              min={360}
+              max={1200}
+              step={10}
+              value={menuBlock.data.menuImageOneWidthPx ?? 760}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: {
+                    ...menuBlock.data,
+                    menuImageOneWidthPx: Number(event.target.value),
+                  },
+                })
+              }
+            />
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Image 2 width ({Math.round(menuBlock.data.menuImageTwoWidthPx ?? 760)}px)
+            <input
+              className="mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500"
+              type="range"
+              min={360}
+              max={1200}
+              step={10}
+              value={menuBlock.data.menuImageTwoWidthPx ?? 760}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: {
+                    ...menuBlock.data,
+                    menuImageTwoWidthPx: Number(event.target.value),
+                  },
+                })
+              }
+            />
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Image height ({Math.round(menuBlock.data.menuImageHeightPx ?? 430)}px)
+            <input
+              className="mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500"
+              type="range"
+              min={220}
+              max={900}
+              step={10}
+              value={menuBlock.data.menuImageHeightPx ?? 430}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: {
+                    ...menuBlock.data,
+                    menuImageHeightPx: Number(event.target.value),
+                  },
+                })
+              }
+            />
+          </label>
+          <label className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Image gap ({Math.round(menuBlock.data.menuImageGapPx ?? 20)}px)
+            <input
+              className="mt-2 h-2 w-full appearance-none rounded-full bg-stone-200 accent-amber-500"
+              type="range"
+              min={8}
+              max={64}
+              step={1}
+              value={menuBlock.data.menuImageGapPx ?? 20}
+              onChange={(event) =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: {
+                    ...menuBlock.data,
+                    menuImageGapPx: Number(event.target.value),
+                  },
+                })
+              }
+            />
+          </label>
+        </div>
+        {uploadError ? (
+          <p className="mt-2 text-[10px] text-rose-600">{uploadError}</p>
+        ) : null}
+        <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+              Current selected images
+            </p>
+            <button
+              className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600"
+              type="button"
+              onClick={() => void loadLibraryAssets()}
+            >
+              Refresh library
+            </button>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-2">
+              {menuBlock.data.menuImageOneUrl ? (
+                <img
+                  src={menuBlock.data.menuImageOneUrl}
+                  alt={menuBlock.data.menuImageOneAlt ?? "Menu image one"}
+                  className="h-24 w-full rounded-lg object-contain"
+                />
+              ) : (
+                <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-stone-300 text-[10px] text-stone-500">
+                  Image 1 not selected
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-2">
+              {menuBlock.data.menuImageTwoUrl ? (
+                <img
+                  src={menuBlock.data.menuImageTwoUrl}
+                  alt={menuBlock.data.menuImageTwoAlt ?? "Menu image two"}
+                  className="h-24 w-full rounded-lg object-contain"
+                />
+              ) : (
+                <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-stone-300 text-[10px] text-stone-500">
+                  Image 2 not selected
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="mt-4 text-[10px] uppercase tracking-[0.2em] text-stone-500">
+            Select from media library
+          </p>
+          <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-stone-200 bg-stone-50 p-2">
+            {libraryLoading ? (
+              <p className="text-[10px] text-stone-500">Loading media...</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {libraryAssets.map((asset) => (
+                  <div
+                    key={asset.url}
+                    className="overflow-hidden rounded-lg border border-stone-200 bg-white"
+                  >
+                    <img src={asset.url} alt={asset.name} className="h-16 w-full object-cover" />
+                    <div className="grid grid-cols-2 gap-1 p-1">
+                      <button
+                        type="button"
+                        className="rounded border border-stone-200 px-1 py-0.5 text-[9px] font-semibold text-stone-700"
+                        onClick={() =>
+                          updateMenuBlock({
+                            ...menuBlock,
+                            data: { ...menuBlock.data, menuImageOneUrl: asset.url },
+                          })
+                        }
+                      >
+                        Set 1
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-stone-200 px-1 py-0.5 text-[9px] font-semibold text-stone-700"
+                        onClick={() =>
+                          updateMenuBlock({
+                            ...menuBlock,
+                            data: { ...menuBlock.data, menuImageTwoUrl: asset.url },
+                          })
+                        }
+                      >
+                        Set 2
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600"
+              type="button"
+              onClick={() =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: { ...menuBlock.data, menuImageOneUrl: "" },
+                })
+              }
+            >
+              Clear image 1
+            </button>
+            <button
+              className="rounded-full border border-stone-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-600"
+              type="button"
+              onClick={() =>
+                updateMenuBlock({
+                  ...menuBlock,
+                  data: { ...menuBlock.data, menuImageTwoUrl: "" },
+                })
+              }
+            >
+              Clear image 2
             </button>
           </div>
         </div>

@@ -1,7 +1,13 @@
 "use client";
 
 import { memo, useEffect } from "react";
-import { ContentBlock, FontKey, GlobalSettings, TextStyle } from "@/lib/content/types";
+import {
+  BrandMessageBlock,
+  ContentBlock,
+  FontKey,
+  GlobalSettings,
+  TextStyle,
+} from "@/lib/content/types";
 import { fontFamilyForKey } from "@/lib/content/fonts";
 import BrandMessageSection from "@/components/blocks/BrandMessageSection";
 import { sanitizeRichHtml } from "@/lib/content/rich";
@@ -33,6 +39,12 @@ function BlockRenderer({ blocks, globals }: Props) {
   const brandMessage = globals?.brandMessage;
   const brandMessageHtml = globals?.brandMessageHtml;
   const brandMessageRich = globals?.brandMessageRich;
+  const firstBrandBlock = blocks.find(
+    (item): item is BrandMessageBlock => item.type === "brand-message"
+  );
+  const brandBoxHue = firstBrandBlock?.data.messageBoxHue ?? 42;
+  const brandBoxSaturation = firstBrandBlock?.data.messageBoxSaturation ?? 18;
+  const brandBoxLightness = firstBrandBlock?.data.messageBoxLightness ?? 98;
   const styleFrom = (style?: TextStyle, fontKey?: FontKey) => {
     const next: React.CSSProperties = {};
     if (style) {
@@ -155,7 +167,7 @@ function BlockRenderer({ blocks, globals }: Props) {
                           muted
                           loop
                           playsInline
-                          preload="auto"
+                          preload="metadata"
                           controls={false}
                           src={block.data.videoUrl}
                           onClick={(event) => {
@@ -200,6 +212,12 @@ function BlockRenderer({ blocks, globals }: Props) {
                   <div
                     className="absolute inset-0 bg-black"
                     style={{ opacity: block.data.overlayOpacity }}
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-40"
+                    style={{
+                      background: `linear-gradient(to bottom, hsla(${brandBoxHue}, ${brandBoxSaturation}%, ${brandBoxLightness}%, 0) 0%, hsl(${brandBoxHue}, ${brandBoxSaturation}%, ${brandBoxLightness}%) 100%)`,
+                    }}
                   />
                 </div>
                 <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center gap-6 px-6 py-20 text-center sm:min-h-[140vh] sm:px-16 lg:min-h-[160vh]">
@@ -285,17 +303,29 @@ function BlockRenderer({ blocks, globals }: Props) {
               </section>
             );
           case "brand-message":
+            const boxHue = block.data.messageBoxHue ?? 42;
+            const boxSaturation = block.data.messageBoxSaturation ?? 18;
+            const boxLightness = block.data.messageBoxLightness ?? 98;
             return (
               <div
                 key={block.id}
-                className="relative left-1/2 right-1/2 -translate-x-1/2"
-                style={{ width: "var(--inline-viewport-width, 100vw)" }}
+                className="relative left-1/2 right-1/2 z-10 -mt-28 -translate-x-1/2"
+                style={{
+                  width: "var(--inline-viewport-width, 100vw)",
+                  backgroundColor: `hsl(${boxHue}, ${boxSaturation}%, ${boxLightness}%)`,
+                }}
               >
+                <div
+                  className="pointer-events-none absolute inset-x-0 -top-32 h-32"
+                  style={{
+                    backgroundColor: `hsl(${boxHue}, ${boxSaturation}%, ${boxLightness}%)`,
+                  }}
+                />
                 <BrandMessageSection
                   block={block}
                   id={sectionIds["brand-message"]}
                   dataBlockIndex={index}
-                  className="w-full"
+                  className="w-full rounded-none border-x-0 border-t-0 shadow-none"
                   topImage={
                     block.data.showTopImage
                       ? {
@@ -366,7 +396,7 @@ function BlockRenderer({ blocks, globals }: Props) {
               <section
                 key={block.id}
                 id={sectionIds["triple-media"]}
-                className="relative grid grid-cols-3 items-stretch gap-4 px-0 sm:gap-6"
+                className="relative grid grid-cols-1 items-stretch gap-4 px-0 md:grid-cols-3 md:gap-6"
                 style={{
                   width: "100vw",
                   paddingLeft: "24px",
@@ -426,8 +456,8 @@ function BlockRenderer({ blocks, globals }: Props) {
                           )}px`,
                           minWidth: "24px",
                           minHeight: "24px",
-                          maxWidth: "18vw",
-                          maxHeight: "18vw",
+                          maxWidth: "clamp(72px, 40vw, 180px)",
+                          maxHeight: "clamp(72px, 40vw, 180px)",
                         }}
                       >
                         {logoImageUrl ? (
@@ -539,7 +569,7 @@ function BlockRenderer({ blocks, globals }: Props) {
                         loop
                         playsInline
                         data-autoplay="true"
-                        preload="auto"
+                        preload="metadata"
                         controls={false}
                         src={block.data.rightMedia.url}
                         onClick={(event) => {

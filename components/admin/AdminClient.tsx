@@ -95,11 +95,14 @@ export default function AdminClient() {
   const [showDraftConfirm, setShowDraftConfirm] = useState(false);
   const [draftConfirmChecked, setDraftConfirmChecked] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    if (typeof window === "undefined") return 420;
+    const minSidebarWidth = 288;
+    const maxSidebarWidth = 496;
+    if (typeof window === "undefined") return 336;
     const stored = window.localStorage.getItem("adminSidebarWidth");
-    if (!stored) return 420;
+    if (!stored) return 336;
     const parsed = Number(stored);
-    return Number.isNaN(parsed) ? 420 : parsed;
+    if (Number.isNaN(parsed)) return 336;
+    return Math.min(maxSidebarWidth, Math.max(minSidebarWidth, parsed));
   });
   const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const floatingPanelRef = useRef<HTMLDivElement | null>(null);
@@ -345,6 +348,37 @@ export default function AdminClient() {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
 
+  const normalizeStoredSlug = useCallback((slug: string | null | undefined) => {
+    if (!slug) return null;
+    const normalized = slug.trim().replace(/^\/+/, "").replace(/\/+$/, "");
+    return normalized || null;
+  }, []);
+
+  const slugVariants = useCallback(
+    (slug: string) => {
+      const normalized = normalizeStoredSlug(slug);
+      if (!normalized) return [];
+      return Array.from(new Set([normalized, `/${normalized}`]));
+    },
+    [normalizeStoredSlug]
+  );
+
+  const pickPreferredSlugRow = useCallback(
+    <T extends { slug?: string | null }>(rows: T[] | null | undefined, slug: string) => {
+      const normalized = normalizeStoredSlug(slug);
+      if (!normalized || !rows?.length) return null;
+      return (
+        rows.find((row) => normalizeStoredSlug(row.slug ?? null) === normalized && row.slug === normalized) ??
+        rows.find(
+          (row) => normalizeStoredSlug(row.slug ?? null) === normalized && row.slug === `/${normalized}`
+        ) ??
+        rows.find((row) => normalizeStoredSlug(row.slug ?? null) === normalized) ??
+        rows[0]
+      );
+    },
+    [normalizeStoredSlug]
+  );
+
   const menuSlugs = useMemo(() => {
     const items = globals.menuItems ?? [];
     return items
@@ -368,6 +402,13 @@ export default function AdminClient() {
       setActivePageSlug(pageSlugs[0]);
     }
   }, [pageSlugs, activePageSlug]);
+
+  useEffect(() => {
+    const normalized = normalizeStoredSlug(activePageSlug);
+    if (normalized && normalized !== activePageSlug) {
+      setActivePageSlug(normalized);
+    }
+  }, [activePageSlug, normalizeStoredSlug]);
 
   const defaultContentForSlug = (slug: string) => {
     if (slug === "menu") return defaultMenuContent;
@@ -657,10 +698,13 @@ export default function AdminClient() {
       ]);
     if (draftError) return;
     const published =
-      publishedData?.map((row) => row.slug).filter((slug): slug is string => Boolean(slug)) ??
-      [];
+      publishedData
+        ?.map((row) => normalizeStoredSlug(row.slug))
+        .filter((slug): slug is string => Boolean(slug)) ?? [];
     const drafts =
-      draftData?.map((row) => row.slug).filter((slug): slug is string => Boolean(slug)) ?? [];
+      draftData
+        ?.map((row) => normalizeStoredSlug(row.slug))
+        .filter((slug): slug is string => Boolean(slug)) ?? [];
     const draftAllow = drafts.filter((slug) => DRAFT_ONLY_SLUGS.has(slug));
     const unique = Array.from(new Set([...published, ...draftAllow]));
     if (unique.includes("contact-us") && unique.includes("contactus")) {
@@ -681,7 +725,7 @@ export default function AdminClient() {
     }
 
     setPageSlugs(unique);
-  }, [supabase, DRAFT_ONLY_SLUGS]);
+  }, [supabase, DRAFT_ONLY_SLUGS, normalizeStoredSlug]);
 
   const historyChipForSource = (source: HistorySource | null | undefined) => {
     const label =
@@ -1024,44 +1068,50 @@ export default function AdminClient() {
         return unsavedGuardRef.current.dirty && unsavedGuardRef.current.slug === slug;
       };
       if (shouldSkip()) return;
+      const variants = slugVariants(slug);
+      if (!variants.length) return;
       const { data } = await supabase
         .from("pages")
-        .select("draft,published")
-        .eq("slug", slug)
-        .single();
+        .select("slug,draft,published")
+        .in("slug", variants);
       if (!mountedRef.current) return;
       if (shouldSkip()) return;
       if (versionAtStart !== editVersionRef.current) return;
-      if (data?.published) {
-        setCurrentPublishedPage(data.published as PageContent);
+      const resolvedRow = pickPreferredSlugRow(data, slug);
+      if (resolvedRow?.published) {
+        setCurrentPublishedPage(resolvedRow.published as PageContent);
       }
       const draftIsEmptyGallery =
-        slug === "gallery" && data?.draft && !hasGalleryMedia(data.draft as PageContent);
-      if (data?.draft && !draftIsEmptyGallery) {
-        setContent(data.draft as PageContent);
+        slug === "gallery" &&
+        resolvedRow?.draft &&
+        !hasGalleryMedia(resolvedRow.draft as PageContent);
+      if (resolvedRow?.draft && !draftIsEmptyGallery) {
+        setContent(resolvedRow.draft as PageContent);
         return;
       }
-      if (draftIsEmptyGallery && data?.published) {
-        setContent(data.published as PageContent);
-        await seedDraftFromPublished(slug, data.published as PageContent, { force: true });
+      if (draftIsEmptyGallery && resolvedRow?.published) {
+        setContent(resolvedRow.published as PageContent);
+        await seedDraftFromPublished(slug, resolvedRow.published as PageContent, {
+          force: true,
+        });
         return;
       }
-      if (data?.published) {
-        setContent(data.published as PageContent);
-        await seedDraftFromPublished(slug, data.published as PageContent);
+      if (resolvedRow?.published) {
+        setContent(resolvedRow.published as PageContent);
+        await seedDraftFromPublished(slug, resolvedRow.published as PageContent);
         return;
       }
       const { data: publishedData } = await supabase
         .from("published_pages")
-        .select("content")
-        .eq("slug", slug)
-        .single();
+        .select("slug,content")
+        .in("slug", variants);
       if (shouldSkip()) return;
       if (versionAtStart !== editVersionRef.current) return;
-      if (publishedData?.content) {
-        setCurrentPublishedPage(publishedData.content as PageContent);
-        setContent(publishedData.content as PageContent);
-        await seedDraftFromPublished(slug, publishedData.content as PageContent, {
+      const resolvedPublished = pickPreferredSlugRow(publishedData, slug);
+      if (resolvedPublished?.content) {
+        setCurrentPublishedPage(resolvedPublished.content as PageContent);
+        setContent(resolvedPublished.content as PageContent);
+        await seedDraftFromPublished(slug, resolvedPublished.content as PageContent, {
           force: slug === "gallery",
         });
         return;
@@ -1073,8 +1123,11 @@ export default function AdminClient() {
     [
       clearLocalDraft,
       detectLocalDraft,
+      normalizeStoredSlug,
+      pickPreferredSlugRow,
       seedDraftFromPublished,
       setContentDirty,
+      slugVariants,
       supabase,
     ]
   );
@@ -1147,8 +1200,10 @@ export default function AdminClient() {
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
       if (!sidebarDragRef.current) return;
+      const minSidebarWidth = 288;
+      const maxSidebarWidth = 496;
       const next = sidebarDragRef.current.startWidth + (event.clientX - sidebarDragRef.current.startX);
-      setSidebarWidth(Math.min(620, Math.max(320, next)));
+      setSidebarWidth(Math.min(maxSidebarWidth, Math.max(minSidebarWidth, next)));
     };
     const handleUp = () => {
       sidebarDragRef.current = null;
@@ -1266,11 +1321,12 @@ export default function AdminClient() {
         unsavedGuardRef.current.dirty &&
         unsavedGuardRef.current.slug === activePageSlug;
       if (shouldSkip) return;
+      const variants = slugVariants(activePageSlug);
+      if (!variants.length) return;
       const { data } = await supabase
         .from("pages")
-        .select("draft,published")
-        .eq("slug", activePageSlug)
-        .single();
+        .select("slug,draft,published")
+        .in("slug", variants);
       if (
         unsavedGuardRef.current.dirty &&
         unsavedGuardRef.current.slug === activePageSlug
@@ -1278,24 +1334,24 @@ export default function AdminClient() {
         return;
       }
       if (versionAtStart !== editVersionRef.current) return;
-      if (data?.draft) {
-        setContent(data.draft as PageContent);
-        markContentPersisted(data.draft as PageContent, activePageSlug);
+      const resolvedRow = pickPreferredSlugRow(data, activePageSlug);
+      if (resolvedRow?.draft) {
+        setContent(resolvedRow.draft as PageContent);
+        markContentPersisted(resolvedRow.draft as PageContent, activePageSlug);
         return;
       }
-      if (data?.published) {
-        setContent(data.published as PageContent);
-        markContentPersisted(data.published as PageContent, activePageSlug);
-        await seedDraftFromPublished(activePageSlug, data.published as PageContent, {
+      if (resolvedRow?.published) {
+        setContent(resolvedRow.published as PageContent);
+        markContentPersisted(resolvedRow.published as PageContent, activePageSlug);
+        await seedDraftFromPublished(activePageSlug, resolvedRow.published as PageContent, {
           force: activePageSlug === "gallery",
         });
         return;
       }
       const { data: publishedData } = await supabase
         .from("published_pages")
-        .select("content")
-        .eq("slug", activePageSlug)
-        .single();
+        .select("slug,content")
+        .in("slug", variants);
       if (
         unsavedGuardRef.current.dirty &&
         unsavedGuardRef.current.slug === activePageSlug
@@ -1303,10 +1359,11 @@ export default function AdminClient() {
         return;
       }
       if (versionAtStart !== editVersionRef.current) return;
-      if (publishedData?.content) {
-        setContent(publishedData.content as PageContent);
-        markContentPersisted(publishedData.content as PageContent, activePageSlug);
-        await seedDraftFromPublished(activePageSlug, publishedData.content as PageContent, {
+      const resolvedPublished = pickPreferredSlugRow(publishedData, activePageSlug);
+      if (resolvedPublished?.content) {
+        setContent(resolvedPublished.content as PageContent);
+        markContentPersisted(resolvedPublished.content as PageContent, activePageSlug);
+        await seedDraftFromPublished(activePageSlug, resolvedPublished.content as PageContent, {
           force: activePageSlug === "gallery",
         });
         return;
@@ -1333,7 +1390,10 @@ export default function AdminClient() {
     seedDraftFromPublished,
     handleAsyncError,
     detectLocalDraft,
+    pickPreferredSlugRow,
     setContentDirty,
+    slugVariants,
+    normalizeStoredSlug,
   ]);
 
   useEffect(() => {
@@ -1475,13 +1535,14 @@ export default function AdminClient() {
   };
 
   const resolveSlugForSave = async () => {
+    const currentSlug = normalizeStoredSlug(activePageSlug) ?? activePageSlug;
     const candidate = normalizeSlugFromHref(urlDraft);
     if (
       candidate &&
-      candidate !== activePageSlug &&
-      !["home", "menu"].includes(activePageSlug)
+      candidate !== currentSlug &&
+      !["home", "menu"].includes(currentSlug)
     ) {
-      const oldSlug = activePageSlug;
+      const oldSlug = currentSlug;
       setActivePageSlug(candidate);
       setGlobals((prev) => ({
         ...prev,
@@ -1494,7 +1555,10 @@ export default function AdminClient() {
       await cleanupUnusedPages({ confirm: false });
       return candidate;
     }
-    return activePageSlug;
+    if (currentSlug !== activePageSlug) {
+      setActivePageSlug(currentSlug);
+    }
+    return currentSlug;
   };
 
   const recordHistory = async (
@@ -2020,6 +2084,18 @@ export default function AdminClient() {
               Manage site content and publishing.
             </p>
           </div>
+          {panel === "inline" && showSidebar ? (
+            <div className="shrink-0">
+              <InlineEditPanel
+                target={inlineEditTarget}
+                content={content}
+                globals={globals}
+                onChangeContent={setContentDirty}
+                onChangeGlobals={setGlobals}
+                onClear={() => setInlineEditTarget(null)}
+              />
+            </div>
+          ) : null}
           <div className="space-y-3 text-sm text-stone-600">
             <button
               className="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-left"
@@ -2095,16 +2171,6 @@ export default function AdminClient() {
               <p className="text-xs text-stone-500">Draft snapshots</p>
             </button>
           </div>
-          {panel === "inline" && showSidebar && (
-            <InlineEditPanel
-              target={inlineEditTarget}
-              content={content}
-              globals={globals}
-              onChangeContent={setContentDirty}
-              onChangeGlobals={setGlobals}
-              onClear={() => setInlineEditTarget(null)}
-            />
-          )}
           <div className="mt-auto space-y-3">
             <button
               className="w-full rounded-full border border-stone-200 px-5 py-2 text-sm font-semibold"
@@ -4051,7 +4117,11 @@ export default function AdminClient() {
                       <select
                         className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-semibold text-stone-700 shadow-sm"
                         value={activePageSlug}
-                        onChange={(event) => setActivePageSlug(event.target.value)}
+                        onChange={(event) =>
+                          setActivePageSlug(
+                            normalizeStoredSlug(event.target.value) ?? event.target.value
+                          )
+                        }
                       >
                         {pageOptions.map((page) => (
                           <option key={page.slug} value={page.slug}>

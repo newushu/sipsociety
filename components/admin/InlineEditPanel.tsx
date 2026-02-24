@@ -3383,6 +3383,29 @@ export default function InlineEditPanel({
       { value: "", label: "Use global" },
       ...sortedFonts.map((option) => ({ value: option.value, label: option.label })),
     ];
+    const isBrandMessageTextTarget =
+      target.scope === "brandMessage" && block?.type === "brand-message";
+    const brandBoxHue = isBrandMessageTextTarget ? block.data.messageBoxHue ?? 42 : 42;
+    const brandBoxSaturation = isBrandMessageTextTarget
+      ? block.data.messageBoxSaturation ?? 18
+      : 18;
+    const brandBoxLightness = isBrandMessageTextTarget
+      ? block.data.messageBoxLightness ?? 98
+      : 98;
+    const brandBoxOpacity = isBrandMessageTextTarget
+      ? block.data.messageBoxOpacity ?? 0.72
+      : 0.72;
+    const updateBrandBox = (
+      patch: Partial<{
+        messageBoxHue: number;
+        messageBoxSaturation: number;
+        messageBoxLightness: number;
+        messageBoxOpacity: number;
+      }>
+    ) => {
+      if (!isBrandMessageTextTarget) return;
+      onChangeContent(updateBlock(content, target.blockIndex!, patch));
+    };
 
     return withModal(
       <div className={cardClass}>
@@ -3395,7 +3418,7 @@ export default function InlineEditPanel({
           ) : null}
         </div>
         {visibilityControl ? <div className="mt-3">{visibilityControl}</div> : null}
-        <div className="mt-3 grid gap-3 sm:grid-cols-[1.2fr_1fr]">
+        <div className="mt-3 grid grid-cols-1 gap-3">
           <div className="space-y-2">
             {supportsRich ? (
               <input
@@ -3573,6 +3596,75 @@ export default function InlineEditPanel({
             onChange={(next) => onStyleChange({ ...resolvedStyle, color: next })}
           />
         </div>
+        {isBrandMessageTextTarget ? (
+          <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-3">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+              Message box color
+            </p>
+            <div
+              className="mt-2 h-8 w-full rounded-lg border border-stone-200"
+              style={{
+                backgroundColor: `hsla(${brandBoxHue}, ${brandBoxSaturation}%, ${brandBoxLightness}%, ${brandBoxOpacity})`,
+              }}
+            />
+            <label className="mt-3 block text-[10px] text-stone-500">
+              Hue ({Math.round(brandBoxHue)}deg)
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={360}
+                step={1}
+                value={brandBoxHue}
+                onChange={(event) =>
+                  updateBrandBox({ messageBoxHue: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label className="mt-3 block text-[10px] text-stone-500">
+              Saturation ({Math.round(brandBoxSaturation)}%)
+              <input
+                className={rangeClass}
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={brandBoxSaturation}
+                onChange={(event) =>
+                  updateBrandBox({ messageBoxSaturation: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label className="mt-3 block text-[10px] text-stone-500">
+              Lightness ({Math.round(brandBoxLightness)}%)
+              <input
+                className={rangeClass}
+                type="range"
+                min={70}
+                max={100}
+                step={1}
+                value={brandBoxLightness}
+                onChange={(event) =>
+                  updateBrandBox({ messageBoxLightness: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label className="mt-3 block text-[10px] text-stone-500">
+              Opacity ({Math.round(brandBoxOpacity * 100)}%)
+              <input
+                className={rangeClass}
+                type="range"
+                min={0.2}
+                max={1}
+                step={0.01}
+                value={brandBoxOpacity}
+                onChange={(event) =>
+                  updateBrandBox({ messageBoxOpacity: Number(event.target.value) })
+                }
+              />
+            </label>
+          </div>
+        ) : null}
         <div className="mt-3 space-y-2">
           <label className="flex items-center gap-2 text-[10px] text-stone-500">
             <input

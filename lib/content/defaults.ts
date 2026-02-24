@@ -54,6 +54,10 @@ export const defaultContent: PageContent = {
         messageRich: true,
         showMessage: true,
         messageStyle: { size: 30, weight: 600, italic: false, x: 0, y: 0 },
+        messageBoxHue: 42,
+        messageBoxSaturation: 18,
+        messageBoxLightness: 98,
+        messageBoxOpacity: 0.72,
         icon: "coffee",
         logoScale: 1,
         logoBoxScale: 1,
@@ -156,6 +160,14 @@ export const defaultMenuContent: PageContent = {
         subheading:
           "Seasonal rotations and small-lot offerings. Ask the bar for today's featured beans and rare pours.",
         note: "Menu items below are placeholders. Swap in your real offerings any time.",
+        menuImageOneUrl: "",
+        menuImageOneAlt: "Menu image one",
+        menuImageTwoUrl: "",
+        menuImageTwoAlt: "Menu image two",
+        menuImageOneWidthPx: 760,
+        menuImageTwoWidthPx: 760,
+        menuImageHeightPx: 430,
+        menuImageGapPx: 20,
         showPrices: true,
         sections: [
           {

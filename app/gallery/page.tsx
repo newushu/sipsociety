@@ -6,8 +6,7 @@ import { fontFamilyForKey } from "@/lib/content/fonts";
 import { getPublishedContent, getPublishedGlobals } from "@/lib/content/store";
 import { createServerClient } from "@/lib/supabase/server";
 
-export const revalidate = 0;
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function GalleryPage() {
   const content = await getPublishedContent("gallery");
