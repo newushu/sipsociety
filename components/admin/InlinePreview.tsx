@@ -995,7 +995,8 @@ export default function InlinePreview({
           !(active && overlay.target.kind === "text") &&
           overlay.target.scope !== "brandBgVideo" &&
           overlay.target.scope !== "brandAnimation";
-        const showHighlight = overlay.target.scope !== "brandLogo";
+        const showHighlight =
+          !(overlay.target.kind === "logo" && overlay.target.scope === "brand");
         const highlightClass = `${overlayBoxBase} ${
           showHighlight && (active || hovered) ? "border-amber-300" : "border-transparent"
         }`;
