@@ -810,10 +810,50 @@ export default function InlineEditPanel({
       const maxPx = block.data.leftLogoMaxPx ?? 180;
       const x = block.data.leftLogoX ?? 0;
       const y = block.data.leftLogoY ?? 0;
+      const leftAccent = block.data.leftAccent ?? "#c07a4a";
+      const leftBorderEffect = block.data.leftBorderEffect ?? "both";
 
       return withModal(
         baseCard(
           <div className="mt-3 space-y-3">
+          <label className="text-[10px] text-stone-500">
+            Left box color
+            <input
+              className={inputClass}
+              type="color"
+              value={leftAccent}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex, {
+                    leftAccent: event.target.value,
+                  })
+                )
+              }
+            />
+          </label>
+          <label className="text-[10px] text-stone-500">
+            Left box effect
+            <select
+              className={inputClass}
+              value={leftBorderEffect}
+              onChange={(event) =>
+                onChangeContent(
+                  updateBlock(content, target.blockIndex, {
+                    leftBorderEffect: event.target.value as
+                      | "none"
+                      | "tracer"
+                      | "sweep"
+                      | "both",
+                  })
+                )
+              }
+            >
+              <option value="none">None</option>
+              <option value="tracer">Steam soft</option>
+              <option value="sweep">Steam veil</option>
+              <option value="both">Steam full</option>
+            </select>
+          </label>
           <label className="text-[10px] text-stone-500">
             Logo size ({scale.toFixed(2)})
             <input

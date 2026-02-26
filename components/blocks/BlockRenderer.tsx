@@ -106,6 +106,38 @@ function BlockRenderer({ blocks, globals }: Props) {
   }, [blocks]);
 
   useEffect(() => {
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-reveal]")
+    );
+    if (!nodes.length) return;
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) {
+      nodes.forEach((node) => node.classList.add("is-visible"));
+      return;
+    }
+    const scrollRoot =
+      document.querySelector<HTMLElement>("[data-inline-scroll]") ?? null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const node = entry.target as HTMLElement;
+          if (entry.isIntersecting) {
+            node.classList.add("is-visible");
+            if (node.dataset.revealOnce !== "false") observer.unobserve(node);
+          } else if (node.dataset.revealOnce === "false") {
+            node.classList.remove("is-visible");
+          }
+        });
+      },
+      { threshold: 0.22, root: scrollRoot, rootMargin: "0px 0px -6% 0px" }
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, [blocks]);
+
+  useEffect(() => {
     const videos = Array.from(
       document.querySelectorAll<HTMLVideoElement>("video[data-autoplay]")
     );
@@ -150,7 +182,8 @@ function BlockRenderer({ blocks, globals }: Props) {
                 key={block.id}
                 id={sectionIds.hero}
                 data-block-index={index}
-                className="relative left-1/2 right-1/2 -translate-x-1/2 overflow-hidden bg-stone-900 text-white shadow-2xl shadow-stone-900/30"
+                data-reveal
+                className="scroll-reveal relative left-1/2 right-1/2 -translate-x-1/2 overflow-hidden bg-stone-900 text-white shadow-2xl shadow-stone-900/30"
                 style={{ width: "var(--inline-viewport-width, 100vw)" }}
               >
                 <div className="absolute inset-0">
@@ -220,7 +253,7 @@ function BlockRenderer({ blocks, globals }: Props) {
                     }}
                   />
                 </div>
-                <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center gap-6 px-6 py-20 text-center sm:min-h-[140vh] sm:px-16 lg:min-h-[160vh]">
+                <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center gap-3 px-6 py-20 text-center sm:min-h-[140vh] sm:px-16 lg:min-h-[160vh]">
                   {showLogoText ? (
                     wrapLink(
                       globals?.logoTextLinkEnabled,
@@ -228,7 +261,9 @@ function BlockRenderer({ blocks, globals }: Props) {
                       <p
                         data-edit="logoText"
                         data-block-index={index}
-                        className="text-xs font-semibold uppercase tracking-[0.5em] text-amber-200/80"
+                        data-reveal
+                        data-reveal-delay="1"
+                        className="scroll-reveal text-xs font-semibold uppercase tracking-[0.5em] text-amber-200/80"
                         style={styleFrom(globals?.logoTextStyle, globals?.bodyFont)}
                       >
                         {logoText}
@@ -236,14 +271,18 @@ function BlockRenderer({ blocks, globals }: Props) {
                     )
                   ) : null}
                   {showLogoMark ? (
-                    <div className="flex w-full justify-center sm:w-auto sm:justify-center sm:mt-0 mt-2">
+                    <div
+                      data-reveal
+                      data-reveal-delay="2"
+                      className="scroll-reveal flex w-full justify-center sm:w-auto sm:justify-center sm:mt-0 mt-2"
+                    >
                       {wrapLink(
                         block.data.logoLinkEnabled,
                         block.data.logoLinkUrl,
                         <div
                           data-edit="heroLogo"
                           data-block-index={index}
-                          className={`flex h-20 w-20 items-center justify-center text-2xl font-semibold ${
+                          className={`flex h-60 w-60 items-center justify-center text-2xl font-semibold ${
                             showLogoBox
                               ? "rounded-3xl border border-amber-100/40 bg-white/10"
                               : ""
@@ -254,25 +293,11 @@ function BlockRenderer({ blocks, globals }: Props) {
                             <img
                               src={logoImageUrl}
                               alt={`${logoText} logo`}
-                              className="logo-transform h-16 w-16 rounded-full object-cover"
-                              style={
-                                {
-                                  "--logo-x": `${block.data.logoX ?? 0}%`,
-                                  "--logo-y": `${block.data.logoY ?? 0}%`,
-                                  "--logo-scale": String(block.data.logoScale ?? 1),
-                                } as React.CSSProperties
-                              }
+                              className="logo-reveal h-48 w-48 rounded-full object-cover"
                             />
                           ) : (
                             <span
-                              className="logo-transform"
-                              style={
-                                {
-                                  "--logo-x": `${block.data.logoX ?? 0}%`,
-                                  "--logo-y": `${block.data.logoY ?? 0}%`,
-                                  "--logo-scale": String(block.data.logoScale ?? 1),
-                                } as React.CSSProperties
-                              }
+                              className="logo-reveal"
                             >
                               {logoMark}
                             </span>
@@ -288,7 +313,9 @@ function BlockRenderer({ blocks, globals }: Props) {
                       <h1
                         data-edit="heroTagline"
                         data-block-index={index}
-                        className="max-w-2xl text-3xl font-semibold sm:text-5xl"
+                        data-reveal
+                        data-reveal-delay="3"
+                        className="scroll-reveal max-w-2xl text-3xl font-semibold sm:text-5xl"
                         style={styleFrom(block.data.taglineStyle, globals?.bodyFont)}
                       >
                         {renderRichText(
@@ -309,7 +336,8 @@ function BlockRenderer({ blocks, globals }: Props) {
             return (
               <div
                 key={block.id}
-                className="relative left-1/2 right-1/2 z-10 -mt-28 -translate-x-1/2"
+                data-reveal
+                className="scroll-reveal reveal-slower relative left-1/2 right-1/2 z-10 -mt-28 -translate-x-1/2"
                 style={{
                   width: "var(--inline-viewport-width, 100vw)",
                   backgroundColor: `hsl(${boxHue}, ${boxSaturation}%, ${boxLightness}%)`,
@@ -390,12 +418,13 @@ function BlockRenderer({ blocks, globals }: Props) {
               </div>
             );
           case "triple-media":
-            const leftBorderEffect = block.data.leftBorderEffect ?? "tracer";
+            const leftBorderEffect = block.data.leftBorderEffect ?? "both";
             const showCurtain = block.data.rightMediaCurtainEnabled ?? true;
             return (
               <section
                 key={block.id}
                 id={sectionIds["triple-media"]}
+                data-reveal
                 className="relative grid grid-cols-1 items-stretch gap-4 px-0 md:grid-cols-3 md:gap-6"
                 style={{
                   width: "100vw",
@@ -407,7 +436,9 @@ function BlockRenderer({ blocks, globals }: Props) {
                 <div
                   data-block-index={index}
                   data-border-effect={leftBorderEffect}
-                  className="relative flex h-full min-h-[48vh] flex-col items-center justify-center overflow-hidden rounded-[32px] border border-stone-200 p-8 text-center text-white shadow-xl sm:min-h-[60vh] sm:p-10 lg:min-h-[80vh]"
+                  data-reveal
+                  data-reveal-delay="1"
+                  className="scroll-reveal-card relative flex h-full min-h-[48vh] flex-col items-center justify-center overflow-hidden rounded-[32px] border border-stone-200 p-8 text-center text-white shadow-xl sm:min-h-[60vh] sm:p-10 lg:min-h-[80vh]"
                   style={{
                     backgroundColor: block.data.leftAccent,
                     borderColor: borderEnabled ? borderColor : "transparent",
@@ -415,13 +446,16 @@ function BlockRenderer({ blocks, globals }: Props) {
                   }}
                 >
                   {leftBorderEffect !== "none" ? (
-                    <span className="pointer-events-none absolute inset-0 rounded-[32px] border-effect" />
-                  ) : null}
-                  {leftBorderEffect === "both" || leftBorderEffect === "sweep" ? (
-                    <span className="pointer-events-none absolute inset-0 rounded-[32px] border-sweep" />
+                    <span className="pointer-events-none absolute inset-0 rounded-[32px] left-steam-field" />
                   ) : null}
                   {leftBorderEffect === "both" || leftBorderEffect === "tracer" ? (
-                    <span className="pointer-events-none absolute inset-0 rounded-[32px] border-tracer" />
+                    <span className="pointer-events-none absolute inset-0 rounded-[32px] left-steam-plume" />
+                  ) : null}
+                  {leftBorderEffect === "both" ? (
+                    <span className="pointer-events-none absolute inset-0 rounded-[32px] left-steam-plume left-steam-plume-delay" />
+                  ) : null}
+                  {leftBorderEffect === "both" || leftBorderEffect === "sweep" ? (
+                    <span className="pointer-events-none absolute inset-0 rounded-[32px] left-steam-haze" />
                   ) : null}
                   {showLogoMark ? (
                     wrapLink(
@@ -464,7 +498,7 @@ function BlockRenderer({ blocks, globals }: Props) {
                           <img
                             src={logoImageUrl}
                             alt={`${logoText} logo`}
-                            className="logo-transform-left h-full w-full rounded-full object-cover"
+                            className="logo-transform-left logo-reveal h-full w-full rounded-full object-cover"
                             style={
                               {
                                 "--logo-x": `${block.data.leftLogoX ?? 0}%`,
@@ -476,7 +510,7 @@ function BlockRenderer({ blocks, globals }: Props) {
                           />
                         ) : (
                           <span
-                            className="logo-transform-left"
+                            className="logo-transform-left logo-reveal"
                             style={
                               {
                                 "--logo-x": `${block.data.leftLogoX ?? 0}%`,
@@ -531,7 +565,9 @@ function BlockRenderer({ blocks, globals }: Props) {
                   <div
                     data-edit="middleMedia"
                     data-block-index={index}
-                    className="relative h-full min-h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-100 sm:min-h-[60vh] lg:min-h-[80vh]"
+                    data-reveal
+                    data-reveal-delay="2"
+                    className="scroll-reveal-card relative h-full min-h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-100 sm:min-h-[60vh] lg:min-h-[80vh]"
                     style={{
                       borderColor: borderEnabled ? borderColor : "transparent",
                       borderWidth: borderEnabled ? borderWidth : 0,
@@ -555,7 +591,9 @@ function BlockRenderer({ blocks, globals }: Props) {
                     data-edit="rightMedia"
                     data-block-index={index}
                     data-curtain={showCurtain ? "true" : undefined}
-                    className="relative h-full min-h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-900 sm:min-h-[60vh] lg:min-h-[80vh]"
+                    data-reveal
+                    data-reveal-delay="3"
+                    className="scroll-reveal-card relative h-full min-h-[48vh] overflow-hidden rounded-[32px] border border-stone-200 bg-stone-900 sm:min-h-[60vh] lg:min-h-[80vh]"
                     style={{
                       borderColor: borderEnabled ? borderColor : "transparent",
                       borderWidth: borderEnabled ? borderWidth : 0,
@@ -603,7 +641,8 @@ function BlockRenderer({ blocks, globals }: Props) {
               <section
                 key={block.id}
                 id={sectionIds.landscape}
-                className="relative left-1/2 right-1/2 -translate-x-1/2 overflow-hidden rounded-[48px] border border-stone-200 bg-stone-100"
+                data-reveal
+                className="scroll-reveal relative left-1/2 right-1/2 -translate-x-1/2 overflow-hidden rounded-[48px] border border-stone-200 bg-stone-100"
                 style={{
                   borderColor: borderEnabled ? borderColor : "transparent",
                   borderWidth: borderEnabled ? borderWidth : 0,
@@ -651,7 +690,8 @@ function BlockRenderer({ blocks, globals }: Props) {
               <section
                 key={block.id}
                 id={sectionIds.menu}
-                className="rounded-[36px] border border-stone-200 bg-white/90 p-10 shadow-xl shadow-amber-900/10"
+                data-reveal
+                className="scroll-reveal rounded-[36px] border border-stone-200 bg-white/90 p-10 shadow-xl shadow-amber-900/10"
               >
                 <p
                   className="text-xs font-semibold uppercase tracking-[0.5em] text-amber-500/80"
@@ -730,7 +770,8 @@ function BlockRenderer({ blocks, globals }: Props) {
               <footer
                 key={block.id}
                 id={sectionIds.footer}
-                className="mt-12 border-t border-stone-200 pt-10 text-sm text-stone-500"
+                data-reveal
+                className="scroll-reveal mt-12 border-t border-stone-200 pt-10 text-sm text-stone-500"
               >
                 <div className="flex flex-col items-center gap-4 text-center">
                   {block.data.showLeadLogo ?? true ? (

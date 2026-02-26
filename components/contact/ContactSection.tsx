@@ -50,7 +50,7 @@ export default function ContactSection({ contact, globals }: Props) {
   const showLogo = Boolean(globals.logoImageUrl);
 
   return (
-    <section className="relative left-1/2 w-screen -translate-x-1/2 overflow-hidden">
+    <section className="relative w-full overflow-hidden">
       <div className="absolute inset-0">
         {contact.backgroundType === "video" ? (
           <video
@@ -72,8 +72,8 @@ export default function ContactSection({ contact, globals }: Props) {
         )}
         <div className="absolute inset-0 bg-black/40" />
       </div>
-      <div className="relative z-10 flex min-h-[85vh] items-center justify-center px-6 py-16">
-        <div className="w-full max-w-lg">
+      <div className="relative z-10 flex min-h-[85vh] items-center justify-center px-4 py-16 sm:px-6">
+        <div className="mx-auto w-full max-w-lg">
           <div
             className="rounded-[32px] border border-white/40 bg-white/90 p-8 text-center shadow-2xl backdrop-blur"
             style={boxStyle}

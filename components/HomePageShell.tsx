@@ -9,6 +9,7 @@ type Props = {
   links: { href: string; label: string }[];
   children: React.ReactNode;
   allowOverflow?: boolean;
+  fullBleedMain?: boolean;
 };
 
 export default function HomePageShell({
@@ -16,6 +17,7 @@ export default function HomePageShell({
   links,
   children,
   allowOverflow = false,
+  fullBleedMain = false,
 }: Props) {
   const resolvedLinks = (() => {
     const hasHome = links.some((link) => {
@@ -73,7 +75,15 @@ export default function HomePageShell({
           instagramUrl={globals.instagramUrl}
           links={resolvedLinks}
         />
-        <main className="relative mx-auto max-w-6xl px-6 pb-16 pt-0">{children}</main>
+        <main
+          className={
+            fullBleedMain
+              ? "relative w-full pb-16 pt-0"
+              : "relative mx-auto max-w-6xl px-6 pb-16 pt-0"
+          }
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

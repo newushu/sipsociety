@@ -4193,6 +4193,7 @@ export default function AdminClient() {
                             <ContactInlinePreview
                               content={content}
                               globals={globals}
+                              onChangeContent={setContentDirty}
                               onSelectEdit={handleInlineSelect}
                             />
                           ) : isAboutPage ? (
@@ -4268,6 +4269,7 @@ export default function AdminClient() {
                             <ContactInlinePreview
                               content={content}
                               globals={globals}
+                              onChangeContent={setContentDirty}
                               onSelectEdit={handleInlineSelect}
                             />
                           ) : isAboutPage ? (

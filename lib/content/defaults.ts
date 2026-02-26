@@ -102,7 +102,7 @@ export const defaultContent: PageContent = {
           scale: 1,
         },
         rightMediaCurtainEnabled: true,
-        leftBorderEffect: "tracer",
+        leftBorderEffect: "both",
       },
     },
     {

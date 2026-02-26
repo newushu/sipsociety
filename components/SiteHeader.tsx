@@ -50,7 +50,8 @@ export default function SiteHeader({
   menuPanelWidthPct = 25,
   links,
 }: Props) {
-  const menuDisplaySize = Math.max(menuItemSize * 2.4, 36);
+  const desktopMenuDisplaySize = Math.max(menuItemSize * 2.4, 36);
+  const mobileMenuDisplaySize = Math.max(menuItemSize * 1.5, 22);
   const [open, setOpen] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
@@ -180,18 +181,18 @@ export default function SiteHeader({
                       ×
                     </button>
                   </div>
-                  <div className="flex flex-1 items-center justify-center p-6">
-                    <div className="flex flex-col gap-6 text-center">
+                  <div className="flex flex-1 items-start justify-center p-6 pt-10 sm:items-center sm:pt-6">
+                    <div className="flex w-full flex-col gap-4 text-center sm:gap-6">
                       {links.map((link) => (
                         <a
                           key={link.href}
                           href={link.href}
-                          className="text-lg font-semibold"
+                          className="text-base font-semibold sm:text-lg"
                           onClick={closeMenu}
                           style={{
                             color: menuItemColor,
                             fontFamily: menuItemFont,
-                            fontSize: `${menuDisplaySize}px`,
+                            fontSize: `clamp(${mobileMenuDisplaySize}px, 7vw, ${desktopMenuDisplaySize}px)`,
                             lineHeight: 1.1,
                           }}
                         >

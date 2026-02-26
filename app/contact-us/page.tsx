@@ -29,6 +29,7 @@ export default async function ContactPage() {
             ]
       }
       allowOverflow
+      fullBleedMain
     >
       <ContactSection contact={contact} globals={globals} />
       <SiteFooter

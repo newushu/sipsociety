@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 type Props = {
   src: string;
@@ -9,103 +9,71 @@ type Props = {
   widthPx?: number;
 };
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-  Math.hypot(a.x - b.x, a.y - b.y);
-
 export default function ZoomableMenuImage({
   src,
   alt,
   heightPx = 430,
-  widthPx = 760,
+  widthPx,
 }: Props) {
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
-  const panStartRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(
-    null
-  );
-  const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
-
-  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-    if (pointersRef.current.size === 1) {
-      panStartRef.current = {
-        x: event.clientX,
-        y: event.clientY,
-        ox: offset.x,
-        oy: offset.y,
-      };
-    }
-
-    if (pointersRef.current.size === 2) {
-      const [a, b] = Array.from(pointersRef.current.values());
-      pinchStartRef.current = { distance: distance(a, b), scale };
-      panStartRef.current = null;
-    }
-  };
-
-  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointersRef.current.has(event.pointerId)) return;
-    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-    if (pointersRef.current.size === 2 && pinchStartRef.current) {
-      const [a, b] = Array.from(pointersRef.current.values());
-      const nextScale = clamp(
-        (distance(a, b) / pinchStartRef.current.distance) * pinchStartRef.current.scale,
-        1,
-        5
-      );
-      setScale(nextScale);
-      if (nextScale === 1) setOffset({ x: 0, y: 0 });
-      return;
-    }
-
-    if (pointersRef.current.size === 1 && panStartRef.current && scale > 1) {
-      setOffset({
-        x: panStartRef.current.ox + (event.clientX - panStartRef.current.x),
-        y: panStartRef.current.oy + (event.clientY - panStartRef.current.y),
-      });
-    }
-  };
-
-  const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    pointersRef.current.delete(event.pointerId);
-    if (pointersRef.current.size < 2) pinchStartRef.current = null;
-
-    if (pointersRef.current.size === 1) {
-      const [only] = Array.from(pointersRef.current.values());
-      panStartRef.current = { x: only.x, y: only.y, ox: offset.x, oy: offset.y };
-    } else {
-      panStartRef.current = null;
-    }
-  };
+  const [open, setOpen] = useState(false);
+  const [zoom, setZoom] = useState<1 | 2>(2);
 
   return (
-    <div
-      className="overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 shadow-sm"
-      style={{ width: `${widthPx}px` }}
-    >
-      <div
-        className="relative flex w-full items-center justify-center overflow-hidden"
-        style={{ height: `${heightPx}px`, touchAction: "none" }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+    <>
+      <button
+        type="button"
+        className="group relative block w-full overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 shadow-sm"
+        style={{ width: widthPx ? `${widthPx}px` : "100%" }}
+        onClick={() => {
+          setZoom(2);
+          setOpen(true);
+        }}
       >
         <img
           src={src}
           alt={alt}
-          className="pointer-events-none max-h-full max-w-full select-none"
+          className="h-auto w-full select-none"
           draggable={false}
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
         />
-      </div>
-    </div>
+      </button>
+      {open ? (
+        <div className="fixed inset-0 z-[260] bg-black/80 p-4 sm:p-8" onClick={() => setOpen(false)}>
+          <div
+            className="mx-auto flex h-full w-full max-w-7xl flex-col rounded-2xl bg-stone-950/70 p-3 sm:p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-end gap-2">
+              <button
+                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold text-white"
+                type="button"
+                onClick={() => setZoom((prev) => (prev === 1 ? 2 : 1))}
+              >
+                {zoom === 2 ? "1x" : "2x"}
+              </button>
+              <button
+                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold text-white"
+                type="button"
+                onClick={() => setOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto rounded-xl bg-stone-900/40 p-2 sm:p-4">
+              <img
+                src={src}
+                alt={alt}
+                className="mx-auto block w-full max-w-none select-none rounded-lg"
+                draggable={false}
+                style={{
+                  maxHeight: `${heightPx * 2.1}px`,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "top center",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

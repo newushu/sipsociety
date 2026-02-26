@@ -9,6 +9,9 @@ import { ContactContent, GlobalSettings, PageContent, TextStyle } from "@/lib/co
 type Props = {
   content: PageContent;
   globals: GlobalSettings;
+  onChangeContent: (
+    content: PageContent | ((prev: PageContent) => PageContent)
+  ) => void;
   onSelectEdit: (target: InlineEditTarget) => void;
 };
 
@@ -98,9 +101,16 @@ const resolveContact = (content: PageContent): ContactContent => {
 export default function ContactInlinePreview({
   content,
   globals,
+  onChangeContent,
   onSelectEdit,
 }: Props) {
   const contact = resolveContact(content);
+  const updateContact = (patch: Partial<ContactContent>) => {
+    onChangeContent((prev) => ({
+      ...prev,
+      contact: { ...resolveContact(prev), ...patch },
+    }));
+  };
   const links =
     globals.menuItems?.length
       ? globals.menuItems.map((item) => ({
@@ -128,8 +138,8 @@ export default function ContactInlinePreview({
   const showLogo = Boolean(globals.logoImageUrl);
 
   return (
-    <HomePageShell globals={globals} links={links} allowOverflow>
-      <section className="relative left-1/2 w-screen -translate-x-1/2 overflow-hidden">
+    <HomePageShell globals={globals} links={links} allowOverflow fullBleedMain>
+      <section className="relative w-full overflow-hidden">
         <div
           className="absolute inset-0 z-20 cursor-pointer"
           role="button"
@@ -171,8 +181,8 @@ export default function ContactInlinePreview({
             )}
             <div className="absolute inset-0 bg-black/40" />
           </div>
-        <div className="relative z-10 flex min-h-[85vh] items-center justify-center px-6 py-16">
-          <div className="w-full max-w-lg">
+        <div className="relative z-10 flex min-h-[85vh] items-center justify-center px-4 py-16 sm:px-6">
+          <div className="mx-auto w-full max-w-lg">
             <Editable
               label="Edit form box"
               target={{ kind: "container", scope: "contactFormCard" }}
@@ -194,86 +204,150 @@ export default function ContactInlinePreview({
                       {globals.logoText || globals.logoMark || "Sip Society"}
                     </div>
                   )}
-                  <Editable
-                    label="Edit heading"
-                    target={{ kind: "text", scope: "contactHeading" }}
-                    onSelectEdit={onSelectEdit}
-                  >
+                  <div className="group relative w-full">
+                    <button
+                      className={`absolute ${editBadge}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectEdit({ kind: "text", scope: "contactHeading" });
+                      }}
+                      type="button"
+                    >
+                      Heading style
+                    </button>
                     <h1
                       className="text-3xl font-semibold text-stone-900"
                       style={styleFrom(contact.headingStyle)}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onClick={(event) => event.stopPropagation()}
+                      onBlur={(event) =>
+                        updateContact({ heading: event.currentTarget.textContent ?? "" })
+                      }
                     >
                       {contact.heading}
                     </h1>
-                  </Editable>
-                  <Editable
-                    label="Edit body"
-                    target={{ kind: "text", scope: "contactBody" }}
-                    onSelectEdit={onSelectEdit}
-                  >
+                  </div>
+                  <div className="group relative w-full">
+                    <button
+                      className={`absolute ${editBadge}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectEdit({ kind: "text", scope: "contactBody" });
+                      }}
+                      type="button"
+                    >
+                      Body style
+                    </button>
                     <p
                       className="text-sm text-stone-600"
                       style={styleFrom(contact.bodyStyle)}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onClick={(event) => event.stopPropagation()}
+                      onBlur={(event) =>
+                        updateContact({ body: event.currentTarget.textContent ?? "" })
+                      }
                     >
                       {contact.body}
                     </p>
-                  </Editable>
+                  </div>
                 </div>
                 <div className="mt-6 space-y-2">
-                  <Editable
-                    label="Edit label"
-                    target={{ kind: "text", scope: "contactLabel" }}
-                    onSelectEdit={onSelectEdit}
-                  >
+                  <div className="group relative">
+                    <button
+                      className={`absolute ${editBadge}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectEdit({ kind: "text", scope: "contactLabel" });
+                      }}
+                      type="button"
+                    >
+                      Label style
+                    </button>
                     <label
                       className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500"
                       style={styleFrom(contact.labelStyle)}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onClick={(event) => event.stopPropagation()}
+                      onBlur={(event) =>
+                        updateContact({ label: event.currentTarget.textContent ?? "" })
+                      }
                     >
                       {contact.label}
                     </label>
-                  </Editable>
-                  <Editable
-                    label="Edit placeholder"
-                    target={{ kind: "text", scope: "contactPlaceholder" }}
-                    onSelectEdit={onSelectEdit}
-                  >
+                  </div>
+                  <div className="group relative">
+                    <button
+                      className={`absolute ${editBadge}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectEdit({ kind: "text", scope: "contactPlaceholder" });
+                      }}
+                      type="button"
+                    >
+                      Placeholder style
+                    </button>
                     <input
                       className="w-full rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 text-sm text-stone-800 shadow-sm"
-                      placeholder={contact.placeholder}
-                      readOnly
+                      value={contact.placeholder}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => updateContact({ placeholder: event.target.value })}
                       style={{
                         fontFamily: fontFamilyForKey(contact.labelStyle?.font),
                         color: contact.boxTextColor,
                       }}
                     />
-                  </Editable>
-                  <Editable
-                    label="Edit message label"
-                    target={{ kind: "text", scope: "contactMessageLabel" }}
-                    onSelectEdit={onSelectEdit}
-                  >
+                  </div>
+                  <div className="group relative">
+                    <button
+                      className={`absolute ${editBadge}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectEdit({ kind: "text", scope: "contactMessageLabel" });
+                      }}
+                      type="button"
+                    >
+                      Message label style
+                    </button>
                     <label
                       className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500"
                       style={styleFrom(contact.labelStyle)}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onClick={(event) => event.stopPropagation()}
+                      onBlur={(event) =>
+                        updateContact({ messageLabel: event.currentTarget.textContent ?? "" })
+                      }
                     >
                       {contact.messageLabel}
                     </label>
-                  </Editable>
-                  <Editable
-                    label="Edit message placeholder"
-                    target={{ kind: "text", scope: "contactMessagePlaceholder" }}
-                    onSelectEdit={onSelectEdit}
-                  >
+                  </div>
+                  <div className="group relative">
+                    <button
+                      className={`absolute ${editBadge}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectEdit({ kind: "text", scope: "contactMessagePlaceholder" });
+                      }}
+                      type="button"
+                    >
+                      Message style
+                    </button>
                     <textarea
                       className="min-h-[120px] w-full rounded-2xl border border-stone-200 bg-white/90 px-4 py-3 text-sm text-stone-800 shadow-sm"
-                      placeholder={contact.messagePlaceholder}
-                      readOnly
+                      value={contact.messagePlaceholder}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) =>
+                        updateContact({ messagePlaceholder: event.target.value })
+                      }
                       style={{
                         fontFamily: fontFamilyForKey(contact.labelStyle?.font),
                         color: contact.boxTextColor,
                       }}
                     />
-                  </Editable>
+                  </div>
                 </div>
                 <div className="mt-4">
                   <div className="group relative">
@@ -307,7 +381,16 @@ export default function ContactInlinePreview({
                       type="button"
                       onClick={(event) => event.preventDefault()}
                     >
-                      {contact.buttonText}
+                      <span
+                        contentEditable
+                        suppressContentEditableWarning
+                        onClick={(event) => event.stopPropagation()}
+                        onBlur={(event) =>
+                          updateContact({ buttonText: event.currentTarget.textContent ?? "" })
+                        }
+                      >
+                        {contact.buttonText}
+                      </span>
                     </button>
                   </div>
                 </div>

@@ -149,8 +149,8 @@ export default function BrandMessageSection({
   const boxHue = block.data.messageBoxHue ?? 42;
   const boxSaturation = block.data.messageBoxSaturation ?? 18;
   const boxLightness = block.data.messageBoxLightness ?? 98;
-  const logoX = Math.max(-40, Math.min(40, logo?.x ?? 0));
-  const logoY = Math.max(6, Math.min(36, logo?.y ?? 0));
+  const logoX = Math.max(-18, Math.min(18, (logo?.x ?? 0) * 0.35));
+  const logoY = Math.max(-14, Math.min(14, (logo?.y ?? 0) * 0.35));
   const logoScale = Math.max(0.6, Math.min(1.8, logo?.scale ?? 1));
   const logoBoxScale = Math.max(0.7, Math.min(2.1, logo?.boxScale ?? 1));
   const showTopImage = topImage?.url && topImage.url !== logo?.imageUrl;
@@ -161,7 +161,7 @@ export default function BrandMessageSection({
       ref={ref}
       data-edit="brandAnimation"
       data-block-index={dataBlockIndex}
-      className={`relative flex min-h-[50vh] flex-col items-center justify-center gap-6 overflow-hidden rounded-[48px] border border-stone-200 px-6 pb-16 pt-24 text-center shadow-xl shadow-amber-900/5 brand-anim brand-anim-${animationType} sm:pt-28 ${
+      className={`relative flex min-h-[44vh] flex-col items-center justify-start gap-5 overflow-hidden rounded-[48px] border border-stone-200 px-6 pb-12 pt-3 text-center shadow-xl shadow-amber-900/5 brand-anim brand-anim-${animationType} sm:pt-6 ${
         animActive ? "is-revealed" : ""
       } ${className ?? ""}`}
       style={{
@@ -213,14 +213,16 @@ export default function BrandMessageSection({
         </div>
       ) : null}
       {showLogoMark ? (
-        <div className="relative z-20 mt-2 inline-flex flex-col items-center justify-center gap-2 sm:mt-4">
+        <div className="relative z-20 mt-0 inline-flex flex-col items-center justify-center gap-2 sm:mt-1">
           {wrapLink(
             logoLink?.enabled,
             logoLink?.url,
             <div
               data-edit="brandLogo"
               data-block-index={dataBlockIndex}
-              className={`flex h-28 w-28 items-center justify-center overflow-hidden p-2 text-[10px] font-semibold tracking-[0.3em] text-stone-400 ${
+              data-reveal
+              data-reveal-delay="1"
+              className={`scroll-reveal flex h-28 w-28 items-center justify-center overflow-hidden p-2 text-[10px] font-semibold tracking-[0.3em] text-stone-400 ${
                 showLogoBox ? "rounded-full border border-amber-200/60" : ""
               }`}
               style={{
@@ -233,13 +235,14 @@ export default function BrandMessageSection({
                 <img
                   src={logo.imageUrl}
                   alt={`${logo.text} logo`}
-                  className="h-full w-full object-contain"
+                  className="logo-reveal h-full w-full object-contain"
                   style={{
                     transform: `translate(${logoX}%, ${logoY}%) scale(${logoScale})`,
                   }}
                 />
               ) : logo?.mark ? (
                 <span
+                  className="logo-reveal"
                   style={{
                     transform: `translate(${logoX}%, ${logoY}%) scale(${logoScale})`,
                   }}
@@ -260,7 +263,7 @@ export default function BrandMessageSection({
           ) : null}
         </div>
       ) : null}
-      <div className="relative z-20 mt-8 inline-flex flex-col items-center sm:mt-10">
+      <div data-reveal data-reveal-delay="2" className="scroll-reveal relative z-20 mt-4 inline-flex flex-col items-center sm:mt-5">
         {wrapLink(
           headingLink?.enabled,
           headingLink?.url,
@@ -290,7 +293,7 @@ export default function BrandMessageSection({
           </div>
         ) : null}
       </div>
-      <div className="relative z-20 mt-4 inline-flex flex-col items-center sm:mt-6">
+      <div data-reveal data-reveal-delay="3" className="scroll-reveal relative z-20 mt-2 inline-flex flex-col items-center sm:mt-3">
         {wrapLink(
           messageLink?.enabled,
           messageLink?.url,

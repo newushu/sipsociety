@@ -43,6 +43,8 @@ export default async function MenuPage() {
         showLogoMark={globals.showLogoMark}
         showLogoText={globals.showLogoText}
         showLogoBox={globals.showLogoBox}
+        facebookUrl={globals.facebookUrl}
+        instagramUrl={globals.instagramUrl}
         links={
           globals.menuItems?.length
             ? globals.menuItems.map((item) => ({
@@ -58,8 +60,8 @@ export default async function MenuPage() {
               ]
         }
       />
-      <main className="px-4 py-16 sm:px-6">
-        <div className="mx-auto mb-8 max-w-6xl">
+      <main className="py-16">
+        <div className="mx-auto mb-8 max-w-6xl px-4 sm:px-6">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-stone-500">
             Menu
           </p>
@@ -79,25 +81,23 @@ export default async function MenuPage() {
           ) : null}
         </div>
         <div
-          className="mx-auto flex max-w-6xl flex-col"
+          className="relative left-1/2 flex w-screen -translate-x-1/2 flex-col px-0"
           style={{ gap: `${menuBlock.data.menuImageGapPx ?? 20}px` }}
         >
           {menuBlock.data.menuImageOneUrl ? (
-            <div className="-mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6">
+            <div className="w-full px-0">
               <ZoomableMenuImage
                 src={menuBlock.data.menuImageOneUrl}
                 alt={menuBlock.data.menuImageOneAlt || "Menu image one"}
-                widthPx={menuBlock.data.menuImageOneWidthPx ?? 760}
                 heightPx={menuBlock.data.menuImageHeightPx ?? 430}
               />
             </div>
           ) : null}
           {menuBlock.data.menuImageTwoUrl ? (
-            <div className="-mx-4 overflow-x-auto px-4 sm:-mx-6 sm:px-6">
+            <div className="w-full px-0">
               <ZoomableMenuImage
                 src={menuBlock.data.menuImageTwoUrl}
                 alt={menuBlock.data.menuImageTwoAlt || "Menu image two"}
-                widthPx={menuBlock.data.menuImageTwoWidthPx ?? 760}
                 heightPx={menuBlock.data.menuImageHeightPx ?? 430}
               />
             </div>
