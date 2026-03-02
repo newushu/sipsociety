@@ -175,37 +175,44 @@ export default function AboutInlinePreview({
             >
               <AnimatedReveal animation={about.heroLogoAnimation}>
                 <div
-                  className="mx-auto inline-flex cursor-grab items-center justify-center active:cursor-grabbing"
-                  onPointerDown={(event) => {
-                    if (!onChangeContent) return;
-                    const startY = event.clientY;
-                    const startValue = about.heroLogoY ?? 0;
-                    const handleMove = (moveEvent: PointerEvent) => {
-                      const delta = (moveEvent.clientY - startY) / 2;
-                      const nextY = Math.max(-200, Math.min(200, startValue + delta));
-                      onChangeContent({
-                        ...content,
-                        about: { ...about, heroLogoY: nextY },
-                      });
-                    };
-                    const handleUp = () => {
-                      window.removeEventListener("pointermove", handleMove);
-                      window.removeEventListener("pointerup", handleUp);
-                    };
-                    window.addEventListener("pointermove", handleMove);
-                    window.addEventListener("pointerup", handleUp);
+                  className="mx-auto flex w-full justify-center"
+                  style={{
+                    transform: `translate(${(about.heroLogoX ?? 0) * 0.45}px, ${
+                      (about.heroLogoY ?? 0) * 0.45
+                    }px)`,
                   }}
                 >
-                  <img
-                    src={about.heroLogoUrl || globals.logoImageUrl}
-                    alt="Sip Society"
-                    className="h-20 w-20 rounded-full object-cover"
-                    style={{
-                      transform: `translate(${about.heroLogoX ?? 0}px, ${
-                        about.heroLogoY ?? 0
-                      }px) scale(${about.heroLogoScale ?? 1})`,
+                  <div
+                    className="inline-flex cursor-grab items-center justify-center active:cursor-grabbing"
+                    onPointerDown={(event) => {
+                      if (!onChangeContent) return;
+                      const startY = event.clientY;
+                      const startValue = about.heroLogoY ?? 0;
+                      const handleMove = (moveEvent: PointerEvent) => {
+                        const delta = (moveEvent.clientY - startY) / 2;
+                        const nextY = Math.max(-200, Math.min(200, startValue + delta));
+                        onChangeContent({
+                          ...content,
+                          about: { ...about, heroLogoY: nextY },
+                        });
+                      };
+                      const handleUp = () => {
+                        window.removeEventListener("pointermove", handleMove);
+                        window.removeEventListener("pointerup", handleUp);
+                      };
+                      window.addEventListener("pointermove", handleMove);
+                      window.addEventListener("pointerup", handleUp);
                     }}
-                  />
+                  >
+                    <img
+                      src={about.heroLogoUrl || globals.logoImageUrl}
+                      alt="Sip Society"
+                      className="h-20 w-20 rounded-full object-cover"
+                      style={{
+                        transform: `scale(${about.heroLogoScale ?? 1})`,
+                      }}
+                    />
+                  </div>
                 </div>
               </AnimatedReveal>
             </Editable>

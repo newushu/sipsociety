@@ -67,16 +67,23 @@ export default async function AboutPage() {
         <div className="relative z-10 flex min-h-[90vh] items-center justify-center px-6 py-16">
           <div className="w-full max-w-3xl space-y-6 text-center text-white">
             <AnimatedReveal animation={about.heroLogoAnimation}>
-              <img
-                src={about.heroLogoUrl || globals.logoImageUrl}
-                alt="Sip Society"
-                className="mx-auto h-20 w-20 rounded-full object-cover"
+              <div
+                className="mx-auto flex w-full justify-center"
                 style={{
-                  transform: `translate(${about.heroLogoX ?? 0}px, ${
-                    about.heroLogoY ?? 0
-                  }px) scale(${about.heroLogoScale ?? 1})`,
+                  transform: `translate(${(about.heroLogoX ?? 0) * 0.45}px, ${
+                    (about.heroLogoY ?? 0) * 0.45
+                  }px)`,
                 }}
-              />
+              >
+                <img
+                  src={about.heroLogoUrl || globals.logoImageUrl}
+                  alt="Sip Society"
+                  className="h-20 w-20 rounded-full object-cover"
+                  style={{
+                    transform: `scale(${about.heroLogoScale ?? 1})`,
+                  }}
+                />
+              </div>
             </AnimatedReveal>
             <AnimatedReveal animation={about.heroTitleAnimation}>
               <h1

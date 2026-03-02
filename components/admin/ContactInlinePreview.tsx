@@ -140,23 +140,15 @@ export default function ContactInlinePreview({
   return (
     <HomePageShell globals={globals} links={links} allowOverflow fullBleedMain>
       <section className="relative w-full overflow-hidden">
-        <div
-          className="absolute inset-0 z-20 cursor-pointer"
-          role="button"
-          tabIndex={0}
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelectEdit({ kind: "media", scope: "contactBackground", blockIndex: 0 });
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
+        <div className="pointer-events-none absolute inset-0 z-20">
+          <button
+            className={`pointer-events-auto absolute ${editBadgeCentered} opacity-100`}
+            onClick={(event) => {
               event.stopPropagation();
               onSelectEdit({ kind: "media", scope: "contactBackground", blockIndex: 0 });
-            }
-          }}
-        >
-          <button className={`absolute ${editBadgeCentered} opacity-100`} type="button">
+            }}
+            type="button"
+          >
             Edit background
           </button>
         </div>

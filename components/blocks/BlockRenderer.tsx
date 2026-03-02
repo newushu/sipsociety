@@ -287,17 +287,27 @@ function BlockRenderer({ blocks, globals }: Props) {
                               ? "rounded-3xl border border-amber-100/40 bg-white/10"
                               : ""
                           }`}
-                          style={{ transform: `scale(${block.data.logoBoxScale ?? 1})` }}
+                          style={{
+                            transform: `translate(${(block.data.logoX ?? 0) * 0.45}%, ${
+                              (block.data.logoY ?? 0) * 0.45
+                            }%) scale(${block.data.logoBoxScale ?? 1})`,
+                          }}
                         >
                           {logoImageUrl ? (
                             <img
                               src={logoImageUrl}
                               alt={`${logoText} logo`}
                               className="logo-reveal h-48 w-48 rounded-full object-cover"
+                              style={{
+                                transform: `scale(${block.data.logoScale ?? 1})`,
+                              }}
                             />
                           ) : (
                             <span
                               className="logo-reveal"
+                              style={{
+                                transform: `scale(${block.data.logoScale ?? 1})`,
+                              }}
                             >
                               {logoMark}
                             </span>
